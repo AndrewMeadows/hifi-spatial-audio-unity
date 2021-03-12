@@ -1,5 +1,7 @@
 // HiFiAudioAPIData.cs
 
+using UnityEngine;
+
 namespace HiFi {
 /**
  * Instantiations of this class contain all of the data that is possible to **send to AND receive from** the High Fidelity Audio API Server.
@@ -11,21 +13,17 @@ namespace HiFi {
  */
 public class AudioAPIData {
     /**
-     * If you don't supply a `position` when constructing instantiations of this class, `position` will be `null`.
-     *
      * ✔ The client sends `position` data to the server when `_transmitHiFiAudioAPIDataToServer()` is called.
      *
      * ✔ The server sends `position` data to all clients connected to a server during "peer updates".
      */
-    public Vector3 _position;
+    public Vector3? _position;
     /**
-     * If you don't supply an `orientation` when constructing instantiations of this class, `orientation` will be `null`.
-     *
      * ✔ The client sends `orientation` data to the server when `_transmitHiFiAudioAPIDataToServer()` is called.
      *
      * ✔ The server sends `orientation` data to all clients connected to a server during "peer updates".
      */
-    public Quaternion _orientation;
+    public Quaternion? _orientation;
     //Vector3 orientationEuler; // unsupported for Unity
     /**
      * A volume level below this value is considered background noise and will be smoothly gated off.
@@ -85,20 +83,15 @@ public class AudioAPIData {
      */
     public float? _userRolloff;
 
-    public AudioAPIData(
-            Vector3 position = null,
-            Quaternion orientation = null,
-            float? volumeThreshold = null,
-            float? hiFiGain = null,
-            float? userAttentuation = null,
-            float? userRolloff = null)
-    {
-        _position = position;
-        _orientation = orientation;
-        _volumeThreshold = volumeThreshold;
-        _hiFiGain = hiFiGain;
-        _userAttenuation = userAttenuation;
-        _userRolloff = userRolloff;
+    public AudioAPIData() {
+        // all fields are initialized to null in the ctor
+        _position = null;
+        _orientation = null;
+        _volumeThreshold = null;
+        _hiFiGain = null;
+        _userAttenuation = null;
+        _userRolloff = null;
+        // user must selectively set fields non-null after ctor
     }
 }
 
@@ -132,28 +125,14 @@ public class ReceivedAudioAPIData : AudioAPIData {
      *
      * ✔ The server sends `volumeDecibels` data to all clients connected to a server during "peer updates".
      */
-    public float _volumeDecibels;
+    public float? _volumeDecibels;
 
-    ReceivedHiFiAudioAPIData(
-            string providedUserID,
-            string hashedVisitID,
-            float volumeDecibels,
-            Vector3 position = null,
-            Quaternion orientation = null,
-            float? volumeThreshold = null,
-            float? hiFiGain = null,
-            float? userAttentuation = null,
-            float? userRolloff = null)
-        : base(position,
-                orientation,
-                volumeThreshold,
-                hiFiGain,
-                userAttentuation,
-                userRolloff)
-    {
-        _providedUserID = providedUserID;
-        _hashedVisitID = hashedVisitID;
-        _volumeDecibels = volumeDecibels;
+    public ReceivedAudioAPIData() : base() {
+        // all fields are initialized to null in the ctor
+        _providedUserID = null;
+        _hashedVisitID = null;
+        _volumeDecibels = null;
+        // user must selectively set fields non-null after ctor
     }
 }
 
