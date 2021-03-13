@@ -11,22 +11,6 @@ using UnityEngine.Networking;
 
 namespace Ravi {
 
-public class RaviCommandController {
-    public Microsoft.MixedReality.WebRTC.DataChannel DataChannel {
-        get => _dataChannel;
-        set {
-            _dataChannel = value;
-            if (_dataChannel != null) {
-                _dataChannel.MessageReceived += this.MessageHandler;
-            }
-        }
-    }
-
-    public string Name = "RaviCommandController";
-    public Action<byte[]> MessageHandler;
-    private Microsoft.MixedReality.WebRTC.DataChannel _dataChannel;
-}
-
 /// <summary>
 /// Ravi signaler over websocket
 /// </summary>
@@ -45,12 +29,38 @@ public class RaviSession : MonoBehaviour {
     public delegate void OnSessionStateChangeDelegate(SessionState state);
     public OnSessionStateChangeDelegate OnStateChange;
 
+    /// <summary>
+    /// Signaler for connecting to WebRTC peer
+    /// </summary>
+    [Tooltip("WebRTC signaler")]
     public RaviSignaler Signaler;
+
+    /// <summary>
+    /// WebRTC PeerConnection
+    /// </summary>
+    [Tooltip("PeerConnection")]
     public Microsoft.MixedReality.WebRTC.Unity.PeerConnection PeerConnection;
+
+    /// <summary>
+    /// Unique local user identifier
+    /// </summary>
+    [Tooltip("Unique local user identifier")]
     public string SessionId;
+
+    /// <summary>
+    /// Url to Signal service
+    /// </summary>
+    [Tooltip("Signalurl")]
     public string SignalUrl = "ws://localhost:8889/";
+
+    /// <summary>
+    /// Desired direction of Audio Transceiver
+    /// </summary>
+    [Tooltip("Desired direction of Audio")]
     public Transceiver.Direction DesiredAudioDirection = Transceiver.Direction.SendReceive;
 
+    //private DataChannel _commandDataChannel;
+    //private DataChannel _inputDataChannel;
     private RaviCommandController _commandController;
     private RaviCommandController _inputController;
 
@@ -58,12 +68,12 @@ public class RaviSession : MonoBehaviour {
     private Microsoft.MixedReality.WebRTC.PeerConnection _realPeerConnection;
 
     public void Awake() {
-        Debug.Log("Step 1: RaviSession.Awake()");
-        // Step 1: Connect to PeerConnection and Signaler
+        Debug.Log("RaviSession.Awake()");
+        // Connect to PeerConnection and Signaler
         //
         // If PeerConnection is non-null then we assume it has been completely configured
-        // (with MediaLine, Microphone, etc) else we will do it all ourselves.  We don't
-        // expect any states between (e.g. PeerConnection exists but has no MediaLine).
+        // (with MediaLine, Microphone, etc) via Unity gui-clicks.  Otherwise we create
+        // ALL of the necessary components ourselves.
         if (PeerConnection == null) {
             CreatePeerConnection();
             if (Signaler == null) {
@@ -85,47 +95,10 @@ public class RaviSession : MonoBehaviour {
             // This fails because PeerConnection not yet initialized
             //PeerConnection.StartConnection();
         }
-
         _commandController = new RaviCommandController();
-        _commandController.Name = "command";
-        _commandController.MessageHandler = this.DefaultCommandHandler;
-
-        _inputController  = new RaviCommandController();
-        _inputController.Name = "input";
-        _commandController.MessageHandler = this.DefaultInputHandler;
-    }
-
-    private void DefaultCommandHandler(byte[] msg) {
-        /*
-        Debug.Log($"DefaultCommandHandler msg.Length={msg.Length}");
-        string textMsg = System.Text.Encoding.UTF8.GetString(msg);
-        try {
-            JSONNode obj = JSON.Parse(textMsg);
-            string key = obj["c"];
-            if (_handlers.ContainsKey(key)) {
-                _handlers[key](obj["p"]);
-            } else {
-                Debug.Log($"RouteMessage failed to find handler for command='{textMsg}'");
-            }
-        } catch (Exception e) {
-            // msg is not a JSON string
-            // perhaps it is a binary message for which we have a handler
-            if (msg.Length > 0) {
-                // We assume the first byte represents the 'key':
-                int k = msg[0];
-                string longFormKey = $"0x{k:X2}";
-                if (_binaryHandlers.ContainsKey(longFormKey)) {
-                    _binaryHandlers[longFormKey](msg);
-                } else {
-                    Debug.Log($"RouteMessage no handler for input key={longFormKey} err={e.Message}");
-                }
-            }
-        }
-        */
-    }
-
-    private void DefaultInputHandler(byte[] msg) {
-        Debug.Log($"DefaultCommandHandler msg.Length={msg.Length}");
+        _commandController.Name = "commandController";
+        _inputController = new RaviCommandController();
+        _inputController.Name = "inputController";
     }
 
     private void CreatePeerConnection() {
@@ -171,9 +144,9 @@ public class RaviSession : MonoBehaviour {
     }
 
     public void Open() {
-        Debug.Log("Step 2: RaviSession.Open");
+        Debug.Log("RaviSession.Open");
         if (_sessionState == SessionState.New || _sessionState == SessionState.Closed) {
-            // Step 2: Open signal socket and try to make a _realPeerConnection
+            // Open signal socket and try to get a _realPeerConnection
             if (PeerConnection == null) {
                 throw new InvalidOperationException("null RaviSession.PeerConnection");
             }
@@ -245,16 +218,15 @@ public class RaviSession : MonoBehaviour {
     }
 
     private void OnPeerConnectionInitialized() {
-        Debug.Log("Milestone 3: RaviSession.OnPeerConnectionInitialized");
-        // Milestone 3: we have a _realPeerConnection
-        // (instead of the public Unity-only wrapper 'PeerConnection')
-        //
         // when PeerConnection is initialized we can get a handle to the actual
         // Microsoft.MixedReality.WebRTC.PeerConnection
         _realPeerConnection = PeerConnection.Peer;
         UpdateSessionState(SessionState.Connected);
 
-        // Step 4: connect listeners to _realPeerConnection delegates/events
+        // yay! we have a _realPeerConnection
+        Debug.Log("RaviSession.OnPeerConnectionInitialized");
+
+        // connect listeners to _realPeerConnection delegates/events
         // the _realPeerConnection has the following delegates/events of interest:
         //
         // void TransceiverAdded(Transeiver t)
@@ -264,7 +236,6 @@ public class RaviSession : MonoBehaviour {
         // void VideoTrackRemoved(Transceiver t, RemoteVideoTrack v)
         // void DataChannelAdded(DataChannel c)
         // void DataChannelRemoved(Datachannel c)
-        Debug.Log("Step 4: add realPeerConnection listeners for events");
         _realPeerConnection.TransceiverAdded += this.OnTransceiverAdded;
         _realPeerConnection.AudioTrackAdded += this.OnAudioTrackAdded;
         _realPeerConnection.AudioTrackRemoved += this.OnAudioTrackRemoved;
@@ -307,7 +278,7 @@ public class RaviSession : MonoBehaviour {
     }
 
     void OnTransceiverAdded(Transceiver t) {
-        Debug.Log($"Milestone 5: OnTransceiverAdded Name='{t.Name}' Kind='{t.MediaKind}' DesiredDir='{t.DesiredDirection}' negotiatedDir='{t.NegotiatedDirection}'");
+        Debug.Log($"OnTransceiverAdded Name='{t.Name}' Kind='{t.MediaKind}' DesiredDir='{t.DesiredDirection}' negotiatedDir='{t.NegotiatedDirection}'");
         t.DirectionChanged += this.OnTransceiverDirectionChanged;
         if (t.MediaKind == Microsoft.MixedReality.WebRTC.MediaKind.Audio && t.DesiredDirection != DesiredAudioDirection) {
             // this will trigger a renegotiation
@@ -316,32 +287,31 @@ public class RaviSession : MonoBehaviour {
     }
 
     void OnAudioTrackAdded(RemoteAudioTrack u) {
-        Debug.Log($"Milestone 5: OnAudioTrackAdded Name='{u.Name}' enabled={u.Enabled} isOutputTofDevice={u.IsOutputToDevice()}");
+        Debug.Log($"OnAudioTrackAdded Name='{u.Name}' enabled={u.Enabled} isOutputTofDevice={u.IsOutputToDevice()}");
     }
 
     void OnAudioTrackRemoved(Transceiver t, RemoteAudioTrack u) {
-        Debug.Log($"Milestone 5: OnAudioTrackRemoved Name='{u.Name}'");
+        Debug.Log($"OnAudioTrackRemoved Name='{u.Name}'");
     }
 
     void OnDataChannelAdded(DataChannel c) {
-        Debug.Log($"Milestone 5: OnDataChannelAdded label='{c.Label}' ordered={c.Ordered} reliable={c.Reliable}");
+        Debug.Log($"OnDataChannelAdded label='{c.Label}' ordered={c.Ordered} reliable={c.Reliable}");
         if (c.Label == "ravi.command") {
             _commandController.DataChannel = c;
         } else if (c.Label == "ravi.input") {
             _inputController.DataChannel = c;
         } else {
-            Debug.Log($"OnDataChannelAdded failed to find CommandHandler for DataChannel.Label='{c.Label}'");
+            Debug.Log($"OnDataChannelAdded failed to find controller for DataChannel.Label='{c.Label}'");
         }
     }
 
     void OnDataChannelRemoved(DataChannel c) {
-        Debug.Log($"Milestone 5: OnDataChannelRemoved label='{c.Label}'");
+        Debug.Log($"OnDataChannelRemoved label='{c.Label}'");
     }
 
     void OnTransceiverDirectionChanged(Transceiver t) {
-        Debug.Log($"Milestone 6: OnTransceiverDirectionChanged Name='{t.Name}' Kind='{t.MediaKind}' DesiredDir='{t.DesiredDirection}' negotiatedDir='{t.NegotiatedDirection}'");
+        Debug.Log($"OnTransceiverDirectionChanged Name='{t.Name}' Kind='{t.MediaKind}' DesiredDir='{t.DesiredDirection}' negotiatedDir='{t.NegotiatedDirection}'");
     }
 }
-
 
 } // namespace Ravi
