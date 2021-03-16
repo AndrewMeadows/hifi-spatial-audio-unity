@@ -42,7 +42,7 @@ public class RaviSignaler : Signaler {
     /// Unique identifier of the local peer.
     /// </summary>
     [Tooltip("Unique identifier of local peer")]
-    public string SessionId;
+    public string LocalPeerId;
 
     const string DEFAULT_WEB_SOCKET_URL = "ws://localhost:8889/";
 
@@ -131,13 +131,13 @@ public class RaviSignaler : Signaler {
             IceDataSeparator = IceDelimiter;
         }
 
-        public string ToRaviSignalText(string sessionId) {
+        public string ToRaviSignalText(string localPeerId) {
             if (MessageType == Type.Unknown) {
                 throw new InvalidOperationException("RaviSignalMessage.Type is unknown");
             }
 
             JSONNode obj = new JSONObject();
-            obj["uuid"] = sessionId;
+            obj["uuid"] = localPeerId;
             if (MessageType == Type.Offer) {
                 JSONNode sdp = new JSONObject();
                 sdp["type"] = "offer";
@@ -282,16 +282,16 @@ public class RaviSignaler : Signaler {
     private void Start() {
         SanityCheckWebSocketUrl();
 
-        // sanity check SessionId (should be a Uuid)
-        if (string.IsNullOrEmpty(SessionId)) {
+        // sanity check LocalPeerId (should be a Uuid)
+        if (string.IsNullOrEmpty(LocalPeerId)) {
             // create a fresh uuid
             Guid id = Guid.NewGuid();
-            SessionId = id.ToString();
+            LocalPeerId = id.ToString();
         } else {
             try {
-                Guid id = Guid.Parse(SessionId);
+                Guid id = Guid.Parse(LocalPeerId);
             } catch (FormatException e) {
-                throw new FormatException($"bad SessionId='{SessionId}' err='{e.Message}'");
+                throw new FormatException($"bad LocalPeerId='{LocalPeerId}' err='{e.Message}'");
             }
         }
 
@@ -343,7 +343,7 @@ public class RaviSignaler : Signaler {
         _webSocket.OnOpen += () => {
             LogMessage(Verbosity.SingleEvents, "webSocket OnOpen");
             UpdateConnectionState(ConnectionState.Open);
-            string request = "{\"request\":\"" + SessionId + "\"}";
+            string request = "{\"request\":\"" + LocalPeerId + "\"}";
             LogMessage(Verbosity.Messages, $"SEND login='{request}'");
             _webSocket.SendText(request);
         };
@@ -395,7 +395,7 @@ public class RaviSignaler : Signaler {
     }
 
     private Task SendMessageImplAsync(RaviSignalMessage message) {
-        string text = message.ToRaviSignalText(SessionId);
+        string text = message.ToRaviSignalText(LocalPeerId);
         LogMessage(Verbosity.Messages, $"SEND signal='{text}'");
         return _webSocket.SendText(text);
     }
@@ -405,7 +405,7 @@ public class RaviSignaler : Signaler {
         LogMessage(Verbosity.Messages, $"RECV signal='{signalText}'");
         try {
             JSONNode obj = JSON.Parse(signalText);
-            JSONNode signal = obj[SessionId];
+            JSONNode signal = obj[LocalPeerId];
             if (signal.HasKey("sdp")) {
                 HandleSdpSignal(signal);
             } else if (signal.HasKey("ice")) {

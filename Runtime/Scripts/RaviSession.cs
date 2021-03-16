@@ -59,8 +59,14 @@ public class RaviSession : MonoBehaviour {
     [Tooltip("Desired direction of Audio")]
     public Transceiver.Direction DesiredAudioDirection = Transceiver.Direction.SendReceive;
 
-    //private DataChannel _commandDataChannel;
-    //private DataChannel _inputDataChannel;
+    public RaviCommandController CommandController {
+        get { return _commandController; }
+    }
+
+    public RaviCommandController InputController {
+        get { return _inputController; }
+    }
+
     private RaviCommandController _commandController;
     private RaviCommandController _inputController;
 
@@ -68,7 +74,7 @@ public class RaviSession : MonoBehaviour {
     private Microsoft.MixedReality.WebRTC.PeerConnection _realPeerConnection;
 
     public void Awake() {
-        Debug.Log("RaviSession.Awake()");
+        Debug.Log("RaviSession.Awake");
         // Connect to PeerConnection and Signaler
         //
         // If PeerConnection is non-null then we assume it has been completely configured
@@ -137,7 +143,7 @@ public class RaviSession : MonoBehaviour {
     }
 
     public void Start() {
-        Debug.Log("RaviSession.Start()");
+        Debug.Log("RaviSession.Start");
     }
 
     public void Update() {
@@ -178,9 +184,8 @@ public class RaviSession : MonoBehaviour {
             || Signaler.State == RaviSignaler.ConnectionState.Failed
             || Signaler.State == RaviSignaler.ConnectionState.Closed)
         {
-            // tell Signaler what SessionId to use...
             SanityCheckSessionId();
-            Signaler.SessionId = SessionId;
+            Signaler.LocalPeerId = SessionId;
             Signaler.PleaseConnect(SignalUrl);
         } else if (Signaler.State == RaviSignaler.ConnectionState.Open) {
             // TODO?: what?
@@ -191,6 +196,7 @@ public class RaviSession : MonoBehaviour {
         }
 
         // loop until change or timeout
+        // TODO: make the timeout a class property
         const int CONNECTION_TIMEOUT_SECONDS = 5; // seconds
         DateTime expiry = DateTime.Now.AddSeconds(CONNECTION_TIMEOUT_SECONDS);
         while (_sessionState == SessionState.Connecting) {
@@ -205,6 +211,7 @@ public class RaviSession : MonoBehaviour {
     }
 
     public void Close() {
+        // TODO: implement this
     }
 
     private void UpdateSessionState(SessionState newState) {
@@ -297,8 +304,13 @@ public class RaviSession : MonoBehaviour {
     void OnDataChannelAdded(DataChannel c) {
         Debug.Log($"OnDataChannelAdded label='{c.Label}' ordered={c.Ordered} reliable={c.Reliable}");
         if (c.Label == "ravi.command") {
+            // the 'ravi.command' DataChannel is reliable
+            // and is used to exchange text "command" messages
             _commandController.DataChannel = c;
         } else if (c.Label == "ravi.input") {
+            // /the 'ravi.input' DataChannel is unreliable
+            // and is used to upload user input to the server
+            // (e.g. keystrokes and mouse input)
             _inputController.DataChannel = c;
         } else {
             Debug.Log($"OnDataChannelAdded failed to find controller for DataChannel.Label='{c.Label}'");
@@ -311,6 +323,20 @@ public class RaviSession : MonoBehaviour {
 
     void OnTransceiverDirectionChanged(Transceiver t) {
         Debug.Log($"OnTransceiverDirectionChanged Name='{t.Name}' Kind='{t.MediaKind}' DesiredDir='{t.DesiredDirection}' negotiatedDir='{t.NegotiatedDirection}'");
+    }
+
+    public void SendCommand(string command, string payload) {
+        if (_commandController != null) {
+            _commandController.SendCommand(command, payload);
+        } else {
+            Debug.Log("RaviSession.SendCommand failed for null _commandController"); }
+    }
+
+    public void SendInput(string command, string payload) {
+        if (_inputController != null) {
+            _inputController.SendCommand(command, payload);
+        } else {
+            Debug.Log("RaviSession.SendInput failed for null _inputController"); }
     }
 }
 
