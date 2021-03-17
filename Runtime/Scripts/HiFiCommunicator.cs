@@ -108,9 +108,12 @@ public class HiFiCommunicator : MonoBehaviour {
         Debug.Log("HiFiCommunicator.ConnectToHiFiAudioAPIServer");
         RaviSession.SignalUrl = SignalUrl;
         RaviSession.Open();
+        // TODO: tie onto RaviSession state changes
+        // Also: need to addCommands
     }
 
     public void DisconnectFromHiFiAudioAPIServer() {
+        // TODO: implement this
     }
 
     public void SetInputAudioMediaStream() {

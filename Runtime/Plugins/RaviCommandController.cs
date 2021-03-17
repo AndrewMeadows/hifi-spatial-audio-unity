@@ -14,15 +14,17 @@ using UnityEngine;
 namespace Ravi {
 
 public class RaviCommandController {
-    public string Name = "commandController";
+    public string Name = "commandControllerName";
 
     public Microsoft.MixedReality.WebRTC.DataChannel DataChannel {
         set  {
             if (_dataChannel != null) {
+                _dataChannel.StateChanged -= OnDataChannelStateChanged;
                 _dataChannel.MessageReceived -= HandleMessage;
             }
             _dataChannel = value;
             if (_dataChannel != null) {
+                _dataChannel.StateChanged += OnDataChannelStateChanged;
                 _dataChannel.MessageReceived += HandleMessage;
             }
         }
@@ -34,15 +36,22 @@ public class RaviCommandController {
     public delegate void HandleTextMessageDelegate(string msg);
 
     // RaviCommandController has one root binary handler: HandleMessage
-    // (see below) which will try to parse the data as JSON string and
-    // then search for a corresponding custom handler.  If that fails
-    // it will apply FallbackBinaryHandler (if it has been set non-null).
-    public HandleBinaryMessageDelegate FallbackBinaryHandler;
+    // (see below) which will try to parse the data as JSON string.  If
+    // successful it will try to parse the JSON object as a 'c' command with
+    // 'p' payload.  It will look in a map of handlers for matching command
+    // and submit the message to the corresponding handler.
+    private Dictionary<string, HandleTextMessageDelegate> _handlers;
+
+    // If the JSON parse failed, or the JSON object but did not have expected
+    // structure, or the command was not found in the map then it will submit
+    // the raw messaage data to BinaryHandler.  Ravi users can set this
+    // handler to parse custom messages.
+    public HandleBinaryMessageDelegate BinaryHandler;
+
+    public delegate void DataChannelStateChangedDelegate(Microsoft.MixedReality.WebRTC.DataChannel.ChannelState state);
+    public event DataChannelStateChangedDelegate DataChannelStateChangedEvent;
 
     private Microsoft.MixedReality.WebRTC.DataChannel _dataChannel;
-
-    // A map of custom handlers supplied by external logic
-    private Dictionary<string, HandleTextMessageDelegate> _handlers;
 
     public RaviCommandController() {
         _handlers = new Dictionary<string, HandleTextMessageDelegate>();
@@ -74,6 +83,11 @@ public class RaviCommandController {
         return false;
     }
 
+    private void OnDataChannelStateChanged() {
+        Debug.Log($"{Name}.OnDataChannelStateChanged state='{_dataChannel.State}'");
+        DataChannelStateChangedEvent?.Invoke(_dataChannel.State);
+    }
+
     public void HandleMessage(byte[] msg) {
         string textMsg = System.Text.Encoding.UTF8.GetString(msg);
         Debug.Log($"{Name}.HandleMessage msg='{textMsg}'");
@@ -91,14 +105,31 @@ public class RaviCommandController {
             if (e.Message == "foo") {
                 Debug.Log($"{Name} should not reach here");
             }
-            if (FallbackBinaryHandler != null) {
+            if (BinaryHandler != null) {
                 try {
-                    FallbackBinaryHandler(msg);
+                    BinaryHandler(msg);
                 } catch (Exception ee) {
                     Debug.Log($"{Name}.HandleMessage failed err='{ee.Message}'");
                 }
             }
         }
+    }
+
+    public bool SendCommand(string command, string payload) {
+        JSONNode obj = new JSONObject();
+        obj["c"] = command;
+        obj["p"] = payload;
+        return SendTextMessage(obj.ToString());
+    }
+
+    public bool SendTextMessage(string msg) {
+        try {
+            _dataChannel.SendMessage(System.Text.Encoding.UTF8.GetBytes(msg));
+        } catch (Exception e) {
+            Debug.Log($"RaviCommandController.SendTextMessage failed err='{e.Message}'");
+            return false;
+        }
+        return true;
     }
 }
 

@@ -10,6 +10,8 @@
 using SimpleJSON;
 using System;
 using System.Collections;
+using System.IO;
+using System.IO.Compression;
 using System.Threading.Tasks;
 using UnityEngine;
 
@@ -21,6 +23,27 @@ public struct HiFiMixerInfo {
     public string buildVersion;
     public string visitId;
     public string visitIdHash;
+}
+
+[Serializable]
+public class RaviSessionPeerData {
+    string J;
+    string e;
+    double? x;
+    double? y;
+    double? z;
+    double? W;
+    double? X;
+    double? Y;
+    double? Z;
+    float? g;
+    float? v;
+}
+
+[Serializable]
+public class RaviSessionBinaryData {
+    string[] deleted_visit_ids;
+    RaviSessionPeerData[] peers;
 }
 
 /// <summary>
@@ -75,12 +98,12 @@ public class HiFiSession : MonoBehaviour {
 
     // uncomment these when it is time to use them
     // these delegates are available when adding listeners to corresponding events
-    public delegate void OnConnectionStateChangedDelegate(AudionetConnectionState state);
+    public delegate void ConnectionStateChangedDelegate(AudionetConnectionState state);
     //public delegate void OnUserDataUpdatedDelegate(ReceivedAudioAPIData[] data);
     //public delegate void OnUsersDisconnectedDelegate(ReceivedAudioAPIData[] data);
 
     // these events accept listeners
-    public event OnConnectionStateChangedDelegate ConnectionStateChangedEvent;
+    public event ConnectionStateChangedDelegate ConnectionStateChangedEvent;
     //public event OnUserDataUpdatedDelegate UserDataUpdatedEvent;
     //public event OnUsersDisconnectedDelegate UsersDisconnectedEvent;
 
@@ -95,6 +118,7 @@ public class HiFiSession : MonoBehaviour {
         if (RaviSession == null) {
             CreateRaviSession();
         }
+        RaviSession.SessionStateChangedEvent += OnRaviSessionStateChanged;
     }
 
     private void Start() {
@@ -103,8 +127,9 @@ public class HiFiSession : MonoBehaviour {
 
     private void Update() {
         if (_stateHasChanged) {
+            // we waited to Invoke this on the main thread
             _stateHasChanged = false;
-            ConnectionStateChangedEvent.Invoke(_connectionState);
+            ConnectionStateChangedEvent?.Invoke(_connectionState);
         }
     }
 
@@ -119,6 +144,7 @@ public class HiFiSession : MonoBehaviour {
         //
         // add all command handlers
         RaviSession.CommandController.AddHandler("audionet.init", HandleAudionetInit);
+        RaviSession.CommandController.BinaryHandler = HandleRaviSessionBinaryData;
     }
 
     public void Disconnect() {
@@ -139,11 +165,13 @@ public class HiFiSession : MonoBehaviour {
         if (_connectionState != newState) {
             _connectionState = newState;
             // fire the event later when we're on main thread
+            Debug.Log($"HiFiSession.UpdateState: '{_connectionState}' --> '{newState}'");
             _stateHasChanged = true;
         }
     }
 
     private bool SendAudionetInit() {
+        Debug.Log("HiFiSession.SendAudionetInit");
         if (RaviSession != null && RaviSession.CommandController != null) {
             if (_connectionState == AudionetConnectionState.Failed) {
                 UpdateState(AudionetConnectionState.Disconnected);
@@ -157,6 +185,7 @@ public class HiFiSession : MonoBehaviour {
             if (_connectionState == AudionetConnectionState.Disconnected) {
                 UpdateState(AudionetConnectionState.Connecting);
             }
+            Debug.Log("HiFiSession SEND audionet.init");
             bool success = RaviSession.CommandController.SendCommand("audionet.init", obj.ToString());
             if (!success) {
                 UpdateState(AudionetConnectionState.Failed);
@@ -175,57 +204,51 @@ public class HiFiSession : MonoBehaviour {
                 _mixerInfo.visitIdHash = obj["visit_id_hash"];
                 _mixerInfo.visitId = RaviSession.SessionId;
                 UpdateState(AudionetConnectionState.Connected);
+            } else {
+                Debug.Log($"HandleAudionetInit RECV audionet.init response but connectionState='{_connectionState}'");
             }
         } catch (Exception e) {
             Debug.Log($"HandleAudionetInit failed to parse message='{msg}' err='{e.Message}'");
         }
     }
-}
 
-#if BAR
-let commandController = self.RaviSession.getCommandController()
-// TODO: Re-implement this init timeout later.
-//            let INIT_TIMEOUT_MS = 5000;
-//            let initTimeout = setTimeout(() => {
-//                this.disconnect();
-//                return Promise.reject({
-//                    success: false,
-//                    error: `Couldn't connect to mixer: Call to \`init\` timed out!`
-//                });
-//            }, INIT_TIMEOUT_MS);
-
-let audionetInitParams = [
-    "primary": true,
-    "visit_id": self.RaviSession.getUUID(), // The mixer will hash this randomly-generated UUID, then disseminate it to all clients via `peerData.e`.
-    "session": self.RaviSession.getUUID(), // Still required for old mixers. Will eventually go away.
-    "streaming_scope": self.userDataStreamingScope.rawValue,
-    "is_input_stream_stereo": self._inputAudioMediaStreamIsStereo
-] as [String : Any]
-let initCommandHandler = RaviCommandHandler(commandName: "audionet.init") { response in
-    do {
-        if (response == nil) {
-            return
+    private void HandleRaviSessionBinaryData(byte[] data) {
+        Debug.Log($"HandleRaviSessionBinaryData data.Length={data.Length}");
+        // 'data' may be gzipped so we first try to decompress it
+        const int MAX_UNCOMPRESSED_BUFFER_SIZE = 1024;
+        byte[] uncompressedData = new byte[MAX_UNCOMPRESSED_BUFFER_SIZE];
+        try {
+            using(MemoryStream zipped = new MemoryStream(data)) {
+                using (MemoryStream unzipped = new MemoryStream(uncompressedData)) {
+                    using(GZipStream unzipper = new GZipStream(zipped, CompressionMode.Decompress)) {
+                        unzipper.CopyTo(unzipped);
+                    }
+                }
+            }
+        } catch (Exception) {
+            // decompression failed
+            uncompressedData = data;
         }
-        let decoder = JSONDecoder()
-        let responseData = try decoder.decode(AudionetInitResponseData.self, from: response!.data(using: .utf8)!)
-        self.mixerInfo.connected = true
-        self.mixerInfo.buildNumber = responseData.build_number
-        self.mixerInfo.buildType = responseData.build_type
-        self.mixerInfo.buildVersion = responseData.build_version
-        self.mixerInfo.visitIdHash = responseData.visit_id_hash
-        self.mixerInfo.unhashedVisitID = self.RaviSession.getUUID()
+        // TODO: figure out if this is being called in the main thread or not
+        Debug.Log($"foo = {uncompressedData.Length}");
 
-        let response = AudionetInitResponse(success: true, error: nil, responseData: responseData)
+         string text = System.Text.Encoding.UTF8.GetString(uncompressedData);
+        RaviSessionBinaryData sessionData = JsonUtility.FromJson<RaviSessionBinaryData>(text);
 
-        fulfill(response)
-    } catch {
-        let response = AudionetInitResponse(success: false, error: "Couldn't parse init response!", responseData: nil)
-        reject(NSError(domain: "", code: 1, userInfo: response.dictionary))
+        // BOOKMARK: finish implementing this
+    }
+
+    private void TransmitHiFiAudioAPIData(HiFi.OutgoingAudioAPIData newData, HiFi.OutgoingAudioAPIData oldData) {
+        Debug.Log("TODO: implement this");
+    }
+
+    public void OnRaviSessionStateChanged(Ravi.RaviSession.SessionState state) {
+        Debug.Log($"HiFiSession.OnRaviSessionStateChanged state='{state}'");
+        if (state == Ravi.RaviSession.SessionState.Connected) {
+            SendAudionetInit();
+        }
     }
 }
-let initCommand = RaviCommand(commandName: "audionet.init", params: audionetInitParams, commandHandler: initCommandHandler)
-_ = commandController.sendCommand(raviCommand: initCommand)
-#endif // BAR
 
 } // namespace Ravi
 

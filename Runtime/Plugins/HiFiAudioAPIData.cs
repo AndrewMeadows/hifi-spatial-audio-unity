@@ -1,8 +1,70 @@
 // HiFiAudioAPIData.cs
 
+using SimpleJSON;
 using UnityEngine;
 
 namespace HiFi {
+
+[System.Serializable]
+public class AudioAPIDataChanges {
+    public float? x; // pos.x
+    public float? y; // pos.y
+    public float? z; // pos.z
+    public float? W; // Q.w
+    public float? X; // Q.x
+    public float? Y; // Q.y
+    public float? Z; // Q.z
+    public float? T; // noiseThreshold
+    public float? g; // gain
+    public float? a; // attenutation
+    public float? r; // rolloff
+
+    public bool IsNull() {
+        return x == null && y == null && z == null
+            && W == null && X == null && Y == null && Z == null
+            && T == null && g == null && a == null && r == null;
+    }
+
+    public string ToJsonString() {
+        JSONNode obj = new JSONObject();
+        if (x.HasValue) {
+            obj["x"] = x.Value;
+        }
+        if (y.HasValue) {
+            obj["y"] = y.Value;
+        }
+        if (z.HasValue) {
+            obj["z"] = z.Value;
+        }
+        if (W.HasValue) {
+            obj["W"] = W.Value;
+        }
+        if (X.HasValue) {
+            obj["X"] = X.Value;
+        }
+        if (Y.HasValue) {
+            obj["Y"] = Y.Value;
+        }
+        if (Z.HasValue) {
+            obj["Z"] = Z.Value;
+        }
+        if (T.HasValue) {
+            obj["T"] = T.Value;
+        }
+        if (g.HasValue) {
+            obj["g"] = g.Value;
+        }
+        if (a.HasValue) {
+            obj["a"] = a.Value;
+        }
+        if (r.HasValue) {
+            obj["r"] = r.Value;
+        }
+        return obj.ToString();
+    }
+}
+
+
 /**
  * Instantiations of this class contain all of the data that is possible to **send to AND receive from** the High Fidelity Audio API Server.
  * All member data inside this `class` can be sent to the High Fidelity Audio API Server. See below for more details.
@@ -11,7 +73,8 @@ namespace HiFi {
  *
  * Member data of this class that is sent to the Server will affect the final mixed spatial audio for all listeners in the server's virtual space.
  */
-public class AudioAPIData {
+public class OutgoingAudioAPIData {
+    // NOTE: all data members are nullable types.
     /**
      * ✔ The client sends `position` data to the server when `_transmitHiFiAudioAPIDataToServer()` is called.
      *
@@ -83,15 +146,93 @@ public class AudioAPIData {
      */
     public float? _userRolloff;
 
-    public AudioAPIData() {
-        // all fields are initialized to null in the ctor
-        _position = null;
-        _orientation = null;
-        _volumeThreshold = null;
-        _hiFiGain = null;
-        _userAttenuation = null;
-        _userRolloff = null;
-        // user must selectively set fields non-null after ctor
+    public AudioAPIDataChanges ApplyAndGetChanges(OutgoingAudioAPIData other) {
+        AudioAPIDataChanges changes = new AudioAPIDataChanges();
+
+        if (other == null) {
+            return changes;
+        }
+        // Remember: all data members are nullable types!
+
+        if (other._position.HasValue) {
+            if (!_position.HasValue) {
+                Vector3 otherPos = other._position.Value;
+                _position = otherPos;
+                changes.x = otherPos.x;
+                changes.y = otherPos.y;
+                changes.z = otherPos.z;
+            } else if (_position != other._position) {
+                Vector3 pos = _position.Value;
+                Vector3 otherPos = other._position.Value;
+                if (pos.x != otherPos.x) {
+                    changes.x = otherPos.x;
+                }
+                if (pos.y != otherPos.y) {
+                    changes.y = otherPos.y;
+                }
+                if (pos.z != otherPos.z) {
+                    changes.z = otherPos.z;
+                }
+                _position = otherPos;
+            }
+        }
+
+        if (other._orientation.HasValue) {
+            if (!_orientation.HasValue) {
+                Quaternion otherOrientation = other._orientation.Value;
+                _orientation = otherOrientation;
+                changes.W = otherOrientation.w;
+                changes.X = otherOrientation.x;
+                changes.Y = otherOrientation.y;
+                changes.Z = otherOrientation.z;
+            } else if (_orientation != other._orientation) {
+                Quaternion orientation = _orientation.Value;
+                Quaternion otherOrientation = other._orientation.Value;
+                if (orientation.w != otherOrientation.w) {
+                    changes.W = otherOrientation.w;
+                }
+                if (orientation.x != otherOrientation.x) {
+                    changes.X = otherOrientation.x;
+                }
+                if (orientation.y != otherOrientation.y) {
+                    changes.Y = otherOrientation.y;
+                }
+                if (orientation.z != otherOrientation.z) {
+                    changes.Z = otherOrientation.z;
+                }
+                _orientation = otherOrientation;
+            }
+        }
+
+
+        if (other._volumeThreshold.HasValue) {
+            if (!_volumeThreshold.HasValue || _volumeThreshold != other._volumeThreshold) {
+                _volumeThreshold = other._volumeThreshold.Value;
+                changes.T = _volumeThreshold.Value;
+            }
+        }
+
+        if (other._hiFiGain.HasValue) {
+            if (!_hiFiGain.HasValue || _hiFiGain != other._hiFiGain) {
+                _hiFiGain = other._hiFiGain.Value;
+                changes.g = _hiFiGain.Value;
+            }
+        }
+
+        if (other._userAttenuation.HasValue) {
+            if (!_userAttenuation.HasValue || _userAttenuation != other._userAttenuation) {
+                _userAttenuation = other._userAttenuation.Value;
+                changes.a = _userAttenuation.Value;
+            }
+        }
+
+        if (other._userRolloff.HasValue) {
+            if (!_userRolloff.HasValue || _userRolloff != other._userRolloff) {
+                _userRolloff = other._userRolloff.Value;
+                changes.r = _userRolloff.Value;
+            }
+        }
+        return changes;
     }
 }
 
@@ -99,9 +240,9 @@ public class AudioAPIData {
  * Instantiations of this class contain all of the data that is possible to **receive from** the High Fidelity Audio API Server.
  * See below for more details.
  *
- * See {@link AudioAPIData} for data that can both be sent to and received from the Server (i.e. `position`).
+ * See {@link OutgoingAudioAPIData} for data that can both be sent to and received from the Server (i.e. `position`).
  */
-public class ReceivedAudioAPIData : AudioAPIData {
+public class IncomingAudioAPIData : OutgoingAudioAPIData {
     /**
      * This User ID is an arbitrary string provided by an application developer which can be used to identify the user associated with a client.
      * We recommend that this `providedUserID` be unique across all users, however the High Fidelity API will not enforce uniqueness across clients for this value.
@@ -127,13 +268,15 @@ public class ReceivedAudioAPIData : AudioAPIData {
      */
     public float? _volumeDecibels;
 
-    public ReceivedAudioAPIData() : base() {
+/*
+    public IncomingAudioAPIData() : base() {
         // all fields are initialized to null in the ctor
         _providedUserID = null;
         _hashedVisitID = null;
         _volumeDecibels = null;
         // user must selectively set fields non-null after ctor
     }
+*/
 }
 
 } // namespace HiFi

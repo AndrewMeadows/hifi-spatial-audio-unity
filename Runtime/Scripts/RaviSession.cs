@@ -20,14 +20,13 @@ public class RaviSession : MonoBehaviour {
         New = 0,
         Connecting,
         Connected,
-        Completed,
         Disconnected,
         Failed,
         Closed
     }
 
-    public delegate void OnSessionStateChangeDelegate(SessionState state);
-    public OnSessionStateChangeDelegate OnStateChange;
+    public delegate void SessionStateChangedDelegate(SessionState state);
+    public event SessionStateChangedDelegate SessionStateChangedEvent;
 
     /// <summary>
     /// Signaler for connecting to WebRTC peer
@@ -69,6 +68,7 @@ public class RaviSession : MonoBehaviour {
 
     private RaviCommandController _commandController;
     private RaviCommandController _inputController;
+    private bool _sessionStateChanged = false;
 
     private SessionState _sessionState = SessionState.New;
     private Microsoft.MixedReality.WebRTC.PeerConnection _realPeerConnection;
@@ -85,7 +85,7 @@ public class RaviSession : MonoBehaviour {
             if (Signaler == null) {
                 CreateSignaler();
             } else {
-                Signaler.OnConnectionStateChange = OnSignalStateChange;
+                Signaler.SignalStateChangedEvent += OnSignalStateChanged;
             }
         } else {
             PeerConnection.OnInitialized.AddListener(OnPeerConnectionInitialized);
@@ -93,7 +93,7 @@ public class RaviSession : MonoBehaviour {
             if (Signaler == null) {
                 CreateSignaler();
             } else {
-                Signaler.OnConnectionStateChange = OnSignalStateChange;
+                Signaler.SignalStateChangedEvent -= OnSignalStateChanged;
             }
         }
         if (Signaler != null && PeerConnection != null) {
@@ -103,6 +103,7 @@ public class RaviSession : MonoBehaviour {
         }
         _commandController = new RaviCommandController();
         _commandController.Name = "commandController";
+        _commandController.DataChannelStateChangedEvent += OnCommandChannelStateChanged;
         _inputController = new RaviCommandController();
         _inputController.Name = "inputController";
     }
@@ -139,7 +140,7 @@ public class RaviSession : MonoBehaviour {
         Debug.Log("RaviSession.CreateSignaler");
         Signaler = gameObject.AddComponent<RaviSignaler>() as RaviSignaler;
         Signaler.LogVerbosity = Ravi.RaviSignaler.Verbosity.SingleEvents; // DEBUG
-        Signaler.OnConnectionStateChange = OnSignalStateChange;
+        Signaler.SignalStateChangedEvent += OnSignalStateChanged;
     }
 
     public void Start() {
@@ -147,6 +148,11 @@ public class RaviSession : MonoBehaviour {
     }
 
     public void Update() {
+        if (_sessionStateChanged) {
+            bool eventIsNull = (SessionStateChangedEvent == null);
+            _sessionStateChanged = false;
+            SessionStateChangedEvent?.Invoke(_sessionState);
+        }
     }
 
     public void Open() {
@@ -180,16 +186,16 @@ public class RaviSession : MonoBehaviour {
     private IEnumerator Connect() {
         Debug.Log("RaviSession.Connect");
         UpdateSessionState(SessionState.Connecting);
-        if (Signaler.State == RaviSignaler.ConnectionState.New
-            || Signaler.State == RaviSignaler.ConnectionState.Failed
-            || Signaler.State == RaviSignaler.ConnectionState.Closed)
+        if (Signaler.State == RaviSignaler.SignalState.New
+            || Signaler.State == RaviSignaler.SignalState.Failed
+            || Signaler.State == RaviSignaler.SignalState.Closed)
         {
             SanityCheckSessionId();
             Signaler.LocalPeerId = SessionId;
-            Signaler.PleaseConnect(SignalUrl);
-        } else if (Signaler.State == RaviSignaler.ConnectionState.Open) {
+            Signaler.Connect(SignalUrl);
+        } else if (Signaler.State == RaviSignaler.SignalState.Open) {
             // TODO?: what?
-        } else if (Signaler.State == RaviSignaler.ConnectionState.Closing) {
+        } else if (Signaler.State == RaviSignaler.SignalState.Closing) {
             // Woops, someone crossed the beams!
             UpdateSessionState(SessionState.Failed);
             yield break;
@@ -218,9 +224,7 @@ public class RaviSession : MonoBehaviour {
         if (newState != _sessionState) {
             Debug.Log($"RaviSession.UpdateSessionState '{_sessionState}' --> '{newState}'");
             _sessionState = newState;
-            if (OnStateChange != null) {
-                OnStateChange.Invoke(_sessionState);
-            }
+            _sessionStateChanged = true;
         }
     }
 
@@ -228,7 +232,6 @@ public class RaviSession : MonoBehaviour {
         // when PeerConnection is initialized we can get a handle to the actual
         // Microsoft.MixedReality.WebRTC.PeerConnection
         _realPeerConnection = PeerConnection.Peer;
-        UpdateSessionState(SessionState.Connected);
 
         // yay! we have a _realPeerConnection
         Debug.Log("RaviSession.OnPeerConnectionInitialized");
@@ -255,30 +258,30 @@ public class RaviSession : MonoBehaviour {
         UpdateSessionState(SessionState.Disconnected);
     }
 
-    private void OnSignalStateChange(RaviSignaler.ConnectionState state) {
-        Debug.Log($"RaviSession.OnSignalStateChange signalState='{state}' sessionState='{_sessionState}'");
+    private void OnSignalStateChanged(RaviSignaler.SignalState state) {
+        Debug.Log($"RaviSession.OnSignalStateChanged signalState='{state}' sessionState='{_sessionState}'");
         /*
         switch (state) {
-            case RaviSignaler.ConnectionState.Connecting:
+            case RaviSignaler.SignaSignalnecting:
                 if (_sessionState != SessionState.Connecting) {
                     Debug.Log($"Unexpected: signalState='{state}' but sessionState='{_sessionState}'");
                 }
                 break;
-            case RaviSignaler.ConnectionState.Open:
+            case RaviSignaler.SignalState.Open:
                 //if (_sessionState != SessionState.Connecting) {
                 break;
-            case RaviSignaler.ConnectionState.Open:
+            case RaviSignaler.SignalState.Open:
                 break;
-            case RaviSignaler.ConnectionState.Open:
+            case RaviSignaler.SignalState.Open:
                 break;
-            case RaviSignaler.ConnectionState.Open:
+            case RaviSignaler.SignalState.Open:
                 break;
-            case RaviSignaler.ConnectionState.Open:
+            case RaviSignaler.SignalState.Open:
                 break;
             default:
                 break;
         }
-        if (state == RaviSignaler.ConnectionState == RaviSignaler.ConnectionState.Open) {
+        if (state == RaviSignaler.SignalState == RaviSignaler.SignalState.Open) {
             Debug.Log("woot!");
         }
         */
@@ -317,8 +320,23 @@ public class RaviSession : MonoBehaviour {
         }
     }
 
+    void OnCommandChannelStateChanged(DataChannel.ChannelState state) {
+        if (_sessionState == SessionState.Connecting
+                && state == DataChannel.ChannelState.Open) {
+            // the RaviSession is considered Connected when _commandController is ready
+            // to accept commands
+            UpdateSessionState(SessionState.Connected);
+        } else if (_sessionState == SessionState.Connected
+                && state == DataChannel.ChannelState.Closed) {
+            UpdateSessionState(SessionState.Disconnected);
+        }
+    }
+
     void OnDataChannelRemoved(DataChannel c) {
         Debug.Log($"OnDataChannelRemoved label='{c.Label}'");
+        if (c.Label == "ravi.command" && _sessionState == SessionState.Connected) {
+            UpdateSessionState(SessionState.Disconnected);
+        }
     }
 
     void OnTransceiverDirectionChanged(Transceiver t) {

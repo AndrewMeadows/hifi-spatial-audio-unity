@@ -177,7 +177,7 @@ public class RaviSignaler : Signaler {
 
     private WebSocket _webSocket;
 
-    public enum ConnectionState {
+    public enum SignalState {
         New = 0,
         Connecting,
         Open,
@@ -186,20 +186,20 @@ public class RaviSignaler : Signaler {
         Failed
     }
 
-    private ConnectionState _state = ConnectionState.New;
+    private SignalState _state = SignalState.New;
 
-    public ConnectionState State {
+    public SignalState State {
         get { return _state; }
     }
 
-    private bool _pleaseConnect = false;
+    private bool _connectLater = false;
 
-    public delegate void OnConnectionStateChangeDelegate(ConnectionState state);
+    public delegate void SignalStateChangeDelegate(SignalState state);
 
     /// <summary>
-    /// OnConnectionStateChange will be invoked when ConnectionState changes.
+    /// SignalStateChangedEvent will be invoked when SignalState changes.
     /// </summary>
-    public OnConnectionStateChangeDelegate OnConnectionStateChange;
+    public event SignalStateChangeDelegate SignalStateChangedEvent;
 
     #region ISignaler interface
 
@@ -227,12 +227,12 @@ public class RaviSignaler : Signaler {
     /// <summary>
     /// Try to open a signal connection at the next convenience.
     /// </summary>
-    public void PleaseConnect(string webSocketUrl = "") {
-        LogMessage(Verbosity.SingleEvents, $"PleaseConnect url='{webSocketUrl}' state={_state}");
-        _pleaseConnect = true;
-        if (_state == ConnectionState.New
-            || _state == ConnectionState.Closed
-            || _state == ConnectionState.Failed)
+    public void Connect(string webSocketUrl = "") {
+        LogMessage(Verbosity.SingleEvents, $"Connect url='{webSocketUrl}' state={_state}");
+        _connectLater = true;
+        if (_state == SignalState.New
+            || _state == SignalState.Closed
+            || _state == SignalState.Failed)
         {
             if (!string.IsNullOrEmpty(webSocketUrl)) {
                 WebSocketUrl = webSocketUrl;
@@ -300,24 +300,22 @@ public class RaviSignaler : Signaler {
         }
     }
 
-    private void UpdateConnectionState(ConnectionState newState) {
+    private void UpdateSignalState(SignalState newState) {
         if (_state != newState) {
             LogMessage(Verbosity.SingleEvents, $"RaviSignalState: {_state}-->{newState}");
             _state = newState;
-            if (OnConnectionStateChange != null) {
-                OnConnectionStateChange.Invoke(_state);
-            }
+            SignalStateChangedEvent?.Invoke(_state);
         }
     }
 
     /// <summary>
     /// Begin process of opening signal channel over websocket.
     /// </summary>
-    public void StartConnection() {
-        _pleaseConnect = false;
-        if (_state == ConnectionState.New || _state == ConnectionState.Closed) {
+    private void StartConnection() {
+        _connectLater = false;
+        if (_state == SignalState.New || _state == SignalState.Closed) {
             LogMessage(Verbosity.SingleEvents, "StartConnection");
-            UpdateConnectionState(ConnectionState.Connecting);
+            UpdateSignalState(SignalState.Connecting);
             StartCoroutine(OpenWebSocket());
         }
     }
@@ -336,13 +334,13 @@ public class RaviSignaler : Signaler {
                 _webSocket.Close();
                 _webSocket = null;
             }
-            UpdateConnectionState(ConnectionState.Failed);
+            UpdateSignalState(SignalState.Failed);
             yield break;
         }
 
         _webSocket.OnOpen += () => {
             LogMessage(Verbosity.SingleEvents, "webSocket OnOpen");
-            UpdateConnectionState(ConnectionState.Open);
+            UpdateSignalState(SignalState.Open);
             string request = "{\"request\":\"" + LocalPeerId + "\"}";
             LogMessage(Verbosity.Messages, $"SEND login='{request}'");
             _webSocket.SendText(request);
@@ -354,7 +352,7 @@ public class RaviSignaler : Signaler {
 
         _webSocket.OnClose += (closeCode) => {
             LogMessage(Verbosity.SingleEvents, $"webSocket OnClosed! closeCode={closeCode}");
-            UpdateConnectionState(ConnectionState.Closed);
+            UpdateSignalState(SignalState.Closed);
         };
 
         _webSocket.OnMessage += HandleMessage;
@@ -476,7 +474,7 @@ public class RaviSignaler : Signaler {
                 #endif
             }
         }
-        if (_pleaseConnect) {
+        if (_connectLater) {
             StartConnection();
         }
     }
@@ -490,8 +488,8 @@ public class RaviSignaler : Signaler {
             && _webSocket.State != WebSocketState.Closed)
         {
             LogMessage(Verbosity.SingleEvents, "DisconnectWebsocket");
-            if (_state != ConnectionState.Closed && _state != ConnectionState.Failed) {
-                UpdateConnectionState(ConnectionState.Closing);
+            if (_state != SignalState.Closed && _state != SignalState.Failed) {
+                UpdateSignalState(SignalState.Closing);
             }
             Task.Run(() => { _webSocket.Close(); });
         }
