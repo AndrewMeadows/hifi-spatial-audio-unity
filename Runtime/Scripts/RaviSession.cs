@@ -12,7 +12,7 @@ using UnityEngine.Networking;
 namespace Ravi {
 
 /// <summary>
-/// Ravi signaler over websocket
+/// RaviSession tracks WebRTC objects, Signaler, and 
 /// </summary>
 [AddComponentMenu("RaviSession")]
 public class RaviSession : MonoBehaviour {
@@ -41,16 +41,24 @@ public class RaviSession : MonoBehaviour {
     public Microsoft.MixedReality.WebRTC.Unity.PeerConnection PeerConnection;
 
     /// <summary>
-    /// Unique local user identifier
+    /// Uuid string in 4221 format identifying the unique connection with a Ravi server.
+    /// (Also used for LocalPeerId during WebRTC signaling)
     /// </summary>
-    [Tooltip("Unique local user identifier")]
-    public string SessionId;
-
+    public string SessionId {
+        get {
+            if (Signaler != null) {
+                return Signaler.LocalPeerId;
+            }
+            return "";
+        }
+    }
+/*
     /// <summary>
     /// Url to Signal service
     /// </summary>
     [Tooltip("Signalurl")]
     public string SignalUrl = "ws://localhost:8889/";
+*/
 
     /// <summary>
     /// Desired direction of Audio Transceiver
@@ -139,7 +147,7 @@ public class RaviSession : MonoBehaviour {
     private void CreateSignaler() {
         Debug.Log("RaviSession.CreateSignaler");
         Signaler = gameObject.AddComponent<RaviSignaler>() as RaviSignaler;
-        Signaler.LogVerbosity = Ravi.RaviSignaler.Verbosity.SingleEvents; // DEBUG
+        //Signaler.LogVerbosity = Ravi.RaviSignaler.Verbosity.SingleEvents; // DEBUG
         Signaler.SignalStateChangedEvent += OnSignalStateChanged;
     }
 
@@ -155,7 +163,7 @@ public class RaviSession : MonoBehaviour {
         }
     }
 
-    public void Open() {
+    public void Open(string signalUrl) {
         Debug.Log("RaviSession.Open");
         if (_sessionState == SessionState.New || _sessionState == SessionState.Closed) {
             // Open signal socket and try to get a _realPeerConnection
@@ -165,34 +173,21 @@ public class RaviSession : MonoBehaviour {
             if (Signaler == null) {
                 throw new InvalidOperationException("null RaviSession.Signaler");
             }
-            StartCoroutine(Connect());
+            StartCoroutine(Connect(signalUrl));
         }
     }
 
-    private void SanityCheckSessionId() {
-        if (string.IsNullOrEmpty(SessionId)) {
-            // SessionId is expected to be a Uuid in 4221 format.
-            Guid id = Guid.NewGuid();
-            SessionId = id.ToString();
-        } else {
-            try {
-                Guid id = Guid.Parse(SessionId);
-            } catch (FormatException e) {
-                throw new FormatException($"bad SessionId='{SessionId}' err='{e.Message}'");
-            }
-        }
-    }
-
-    private IEnumerator Connect() {
+    private IEnumerator Connect(string signalUrl) {
         Debug.Log("RaviSession.Connect");
         UpdateSessionState(SessionState.Connecting);
         if (Signaler.State == RaviSignaler.SignalState.New
             || Signaler.State == RaviSignaler.SignalState.Failed
             || Signaler.State == RaviSignaler.SignalState.Closed)
         {
-            SanityCheckSessionId();
-            Signaler.LocalPeerId = SessionId;
-            Signaler.Connect(SignalUrl);
+            // Note: RaviSignaler will generate its own LocalPeerId, however if we needed
+            // to assign it then we would do so here, before Signaler.Connect()
+            //Signaler.LocalPeerId = Guid.NewGuid().ToString();
+            Signaler.Connect(signalUrl);
         } else if (Signaler.State == RaviSignaler.SignalState.Open) {
             // TODO?: what?
         } else if (Signaler.State == RaviSignaler.SignalState.Closing) {
@@ -224,6 +219,8 @@ public class RaviSession : MonoBehaviour {
         if (newState != _sessionState) {
             Debug.Log($"RaviSession.UpdateSessionState '{_sessionState}' --> '{newState}'");
             _sessionState = newState;
+            // Just in case this happens on a side thread we remember for later
+            // and invoke the event callbacks in Update() on the main thread.
             _sessionStateChanged = true;
         }
     }
@@ -288,7 +285,7 @@ public class RaviSession : MonoBehaviour {
     }
 
     void OnTransceiverAdded(Transceiver t) {
-        Debug.Log($"OnTransceiverAdded Name='{t.Name}' Kind='{t.MediaKind}' DesiredDir='{t.DesiredDirection}' negotiatedDir='{t.NegotiatedDirection}'");
+        Debug.Log($"RaviSession.OnTransceiverAdded Name='{t.Name}' Kind='{t.MediaKind}' DesiredDir='{t.DesiredDirection}' negotiatedDir='{t.NegotiatedDirection}'");
         t.DirectionChanged += this.OnTransceiverDirectionChanged;
         if (t.MediaKind == Microsoft.MixedReality.WebRTC.MediaKind.Audio && t.DesiredDirection != DesiredAudioDirection) {
             // this will trigger a renegotiation
@@ -297,15 +294,15 @@ public class RaviSession : MonoBehaviour {
     }
 
     void OnAudioTrackAdded(RemoteAudioTrack u) {
-        Debug.Log($"OnAudioTrackAdded Name='{u.Name}' enabled={u.Enabled} isOutputTofDevice={u.IsOutputToDevice()}");
+        Debug.Log($"RaviSession.OnAudioTrackAdded Name='{u.Name}' enabled={u.Enabled} isOutputTofDevice={u.IsOutputToDevice()}");
     }
 
     void OnAudioTrackRemoved(Transceiver t, RemoteAudioTrack u) {
-        Debug.Log($"OnAudioTrackRemoved Name='{u.Name}'");
+        Debug.Log($"RaviSession.OnAudioTrackRemoved Name='{u.Name}'");
     }
 
     void OnDataChannelAdded(DataChannel c) {
-        Debug.Log($"OnDataChannelAdded label='{c.Label}' ordered={c.Ordered} reliable={c.Reliable}");
+        Debug.Log($"RaviSession.OnDataChannelAdded label='{c.Label}' ordered={c.Ordered} reliable={c.Reliable}");
         if (c.Label == "ravi.command") {
             // the 'ravi.command' DataChannel is reliable
             // and is used to exchange text "command" messages
@@ -316,7 +313,7 @@ public class RaviSession : MonoBehaviour {
             // (e.g. keystrokes and mouse input)
             _inputController.DataChannel = c;
         } else {
-            Debug.Log($"OnDataChannelAdded failed to find controller for DataChannel.Label='{c.Label}'");
+            Debug.Log($"RaviSession.OnDataChannelAdded failed to find controller for DataChannel.Label='{c.Label}'");
         }
     }
 
@@ -333,14 +330,14 @@ public class RaviSession : MonoBehaviour {
     }
 
     void OnDataChannelRemoved(DataChannel c) {
-        Debug.Log($"OnDataChannelRemoved label='{c.Label}'");
+        Debug.Log($"RaviSession.OnDataChannelRemoved label='{c.Label}'");
         if (c.Label == "ravi.command" && _sessionState == SessionState.Connected) {
             UpdateSessionState(SessionState.Disconnected);
         }
     }
 
     void OnTransceiverDirectionChanged(Transceiver t) {
-        Debug.Log($"OnTransceiverDirectionChanged Name='{t.Name}' Kind='{t.MediaKind}' DesiredDir='{t.DesiredDirection}' negotiatedDir='{t.NegotiatedDirection}'");
+        Debug.Log($"RaviSession.OnTransceiverDirectionChanged Name='{t.Name}' Kind='{t.MediaKind}' DesiredDir='{t.DesiredDirection}' negotiatedDir='{t.NegotiatedDirection}'");
     }
 
     public void SendCommand(string command, string payload) {

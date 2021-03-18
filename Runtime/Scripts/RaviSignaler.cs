@@ -33,24 +33,23 @@ public class RaviSignaler : Signaler {
     public Verbosity LogVerbosity = 0;
 
     /// <summary>
-    /// Connect on start
-    /// </summary>
-    [Tooltip("Connect on start")]
-    public bool ConnectOnStart = false;
-
-    /// <summary>
     /// Unique identifier of the local peer.
     /// </summary>
     [Tooltip("Unique identifier of local peer")]
     public string LocalPeerId;
 
-    const string DEFAULT_WEB_SOCKET_URL = "ws://localhost:8889/";
-
     /// <summary>
     /// The Ravi websocket to connect to
+    /// For example: wss://api.highfidelity.com:8001/
     /// </summary>
     [Tooltip("The web socket to connect to")]
-    public string WebSocketUrl = DEFAULT_WEB_SOCKET_URL;
+    public string WebSocketUrl = HiFi.Constants.DEFAULT_LOCAL_TEST_SIGNALING_URL;
+
+    /// <summary>
+    /// The Json Web Token used to identify user
+    /// For more info see https://www.highfidelity.com/api/guides/misc/getAJWT
+    /// </summary>
+    public string JWT;
 
     /// <summary>
     /// Signal message abstraction.
@@ -234,9 +233,11 @@ public class RaviSignaler : Signaler {
             || _state == SignalState.Closed
             || _state == SignalState.Failed)
         {
-            if (!string.IsNullOrEmpty(webSocketUrl)) {
+            if (string.IsNullOrEmpty(webSocketUrl)) {
+                WebSocketUrl = HiFi.Constants.DEFAULT_LOCAL_TEST_SIGNALING_URL;
+            } else {
+                // NOTE: RaviSignaler does not sanity check the webSockerUrl format
                 WebSocketUrl = webSocketUrl;
-                SanityCheckWebSocketUrl();
             }
         }
     }
@@ -253,50 +254,8 @@ public class RaviSignaler : Signaler {
             PeerConnection = gameObject.GetComponent(typeof (Microsoft.MixedReality.WebRTC.Unity.PeerConnection))
                 as Microsoft.MixedReality.WebRTC.Unity.PeerConnection;
         }
-    }
-
-    private void SanityCheckWebSocketUrl() {
-        // sanity check WebSocketUrl
-        string originalUrl = WebSocketUrl;
-        if (string.IsNullOrEmpty(WebSocketUrl)) {
-            WebSocketUrl = DEFAULT_WEB_SOCKET_URL;
-        } else {
-            if (!WebSocketUrl.StartsWith("ws://")) {
-                WebSocketUrl = "ws://" + WebSocketUrl;
-            }
-            if (!WebSocketUrl.EndsWith("/")) {
-                WebSocketUrl += "/";
-            }
-        }
-        if (originalUrl != WebSocketUrl) {
-            LogMessage(Verbosity.SingleEvents, $"SanityCheckWebSocketUrl '{originalUrl}' --> '{WebSocketUrl}'");
-        }
-    }
-
-    /// <summary>
-    /// Unity Engine Start() hook
-    /// </summary>
-    /// <remarks>
-    /// https://docs.unity3d.com/ScriptReference/MonoBehaviour.Start.html
-    /// </remarks>
-    private void Start() {
-        SanityCheckWebSocketUrl();
-
-        // sanity check LocalPeerId (should be a Uuid)
         if (string.IsNullOrEmpty(LocalPeerId)) {
-            // create a fresh uuid
-            Guid id = Guid.NewGuid();
-            LocalPeerId = id.ToString();
-        } else {
-            try {
-                Guid id = Guid.Parse(LocalPeerId);
-            } catch (FormatException e) {
-                throw new FormatException($"bad LocalPeerId='{LocalPeerId}' err='{e.Message}'");
-            }
-        }
-
-        if (ConnectOnStart) {
-            StartConnection();
+            LocalPeerId = Guid.NewGuid().ToString();
         }
     }
 
@@ -305,18 +264,6 @@ public class RaviSignaler : Signaler {
             LogMessage(Verbosity.SingleEvents, $"RaviSignalState: {_state}-->{newState}");
             _state = newState;
             SignalStateChangedEvent?.Invoke(_state);
-        }
-    }
-
-    /// <summary>
-    /// Begin process of opening signal channel over websocket.
-    /// </summary>
-    private void StartConnection() {
-        _connectLater = false;
-        if (_state == SignalState.New || _state == SignalState.Closed) {
-            LogMessage(Verbosity.SingleEvents, "StartConnection");
-            UpdateSignalState(SignalState.Connecting);
-            StartCoroutine(OpenWebSocket());
         }
     }
 
@@ -475,7 +422,26 @@ public class RaviSignaler : Signaler {
             }
         }
         if (_connectLater) {
-            StartConnection();
+            _connectLater = false;
+            if (_state == SignalState.New || _state == SignalState.Closed) {
+                // The Ravi service expects the Signaler's LocalPeerId to be a UUID string in 4221 format.
+                if (string.IsNullOrEmpty(LocalPeerId)) {
+                    // create a fresh uuid
+                    LocalPeerId = Guid.NewGuid().ToString();
+                } else {
+                    try {
+                        Guid id = Guid.Parse(LocalPeerId);
+                    } catch (FormatException) {
+                        LogMessage(Verbosity.Errors, $"RaviSignaler cowardly refusing to use LocalPeerId='{LocalPeerId}'");
+                        // create a fresh uuid
+                        LocalPeerId = Guid.NewGuid().ToString();
+                    }
+                }
+
+                LogMessage(Verbosity.SingleEvents, $"StartConnection LocalPeerId={LocalPeerId}");
+                UpdateSignalState(SignalState.Connecting);
+                StartCoroutine(OpenWebSocket());
+            }
         }
     }
 

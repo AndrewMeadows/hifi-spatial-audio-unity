@@ -90,20 +90,22 @@ public class RaviCommandController {
 
     public void HandleMessage(byte[] msg) {
         string textMsg = System.Text.Encoding.UTF8.GetString(msg);
-        Debug.Log($"{Name}.HandleMessage msg='{textMsg}'");
+        Debug.Log($"{Name}.HandleMessage msg.Length='{msg.Length}'");
         try {
             JSONNode obj = JSON.Parse(textMsg);
             string key = obj["c"];
             if (_handlers.ContainsKey(key)) {
                 _handlers[key](obj["p"]);
             } else {
-                Debug.Log($"RouteMessage failed to find handler for command='{textMsg}'");
+                Debug.Log($"{Name}.HandleMessage failed to find handler for command='{textMsg}'");
+                Debug.Log($"{Name}.HandleMessage failed json='{obj.ToString()}'");
             }
         } catch (Exception e) {
+            Debug.Log($"{Name}.HandleMessage could not parse msg as Json string"); // adebug
             // not an error: this is expected flow
             // msg is not a JSON string
             if (e.Message == "foo") {
-                Debug.Log($"{Name} should not reach here");
+                Debug.Log($"{Name}.HandleMessage should not reach here");
             }
             if (BinaryHandler != null) {
                 try {
@@ -115,7 +117,8 @@ public class RaviCommandController {
         }
     }
 
-    public bool SendCommand(string command, string payload) {
+    public bool SendCommand(string command, JSONNode payload) {
+        Debug.Log($"{Name}.SendCommand command='{command}' payload='{payload}'");
         JSONNode obj = new JSONObject();
         obj["c"] = command;
         obj["p"] = payload;
@@ -123,10 +126,11 @@ public class RaviCommandController {
     }
 
     public bool SendTextMessage(string msg) {
+        Debug.Log($"{Name}.SendTextCommand msg='{msg}' msg.Length={msg.Length}");
         try {
             _dataChannel.SendMessage(System.Text.Encoding.UTF8.GetBytes(msg));
         } catch (Exception e) {
-            Debug.Log($"RaviCommandController.SendTextMessage failed err='{e.Message}'");
+            Debug.Log($"{Name}.SendTextMessage failed err='{e.Message}'");
             return false;
         }
         return true;

@@ -10,6 +10,7 @@
 using SimpleJSON;
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Threading.Tasks;
@@ -25,25 +26,75 @@ public struct HiFiMixerInfo {
     public string visitIdHash;
 }
 
-[Serializable]
 public class RaviSessionPeerData {
-    string J;
-    string e;
-    double? x;
-    double? y;
-    double? z;
-    double? W;
-    double? X;
-    double? Y;
-    double? Z;
-    float? g;
-    float? v;
+    //public string J; // JWT user ID
+    public string e; // hashedVisitId
+    public float v; // volume
+
+    public float x;
+    public float y;
+    public float z;
+    public float W;
+    public float X;
+    public float Y;
+    public float Z;
+
+    public void LoadDefaults() {
+        //J = "";
+        e = "";
+        v = 0.0f;
+        x = 0.0f;
+        y = 0.0f;
+        z = 0.0f;
+        W = 1.0f;
+        X = 0.0f;
+        Y = 0.0f;
+        Z = 0.0f;
+    }
+
+    public void UpdateFromJson(JSONNode obj) {
+        try {
+            e = obj["e"].Value;
+        } catch (KeyNotFoundException) {
+        }
+        try {
+            v = obj["v"].AsFloat;
+        } catch (KeyNotFoundException) {
+        }
+        try {
+            x = obj["x"].AsFloat;
+        } catch (KeyNotFoundException) {
+        }
+        try {
+            y = obj["y"].AsFloat;
+        } catch (KeyNotFoundException) {
+        }
+        try {
+            z = obj["z"].AsFloat;
+        } catch (KeyNotFoundException) {
+        }
+        try {
+            W = obj["W"].AsFloat;
+        } catch (KeyNotFoundException) {
+        }
+        try {
+            X = obj["X"].AsFloat;
+        } catch (KeyNotFoundException) {
+        }
+        try {
+            Y = obj["Y"].AsFloat;
+        } catch (KeyNotFoundException) {
+        }
+        try {
+            Z = obj["Z"].AsFloat;
+        } catch (KeyNotFoundException) {
+        }
+    }
 }
 
-[Serializable]
 public class RaviSessionBinaryData {
-    string[] deleted_visit_ids;
-    RaviSessionPeerData[] peers;
+    public string[] deleted_visit_ids;
+    public RaviSessionPeerData[] peers;
 }
 
 /// <summary>
@@ -83,13 +134,19 @@ public class HiFiSession : MonoBehaviour {
 
 
     /// <summary>
-    /// Url to Signal service
+    /// Signaling service
     /// </summary>
-    [Tooltip("Signalurl")]
-    public string SignalUrl = HiFi.Constants.DEFAULT_SIGNAL_URL;
+    [Tooltip("SignalUrl")]
+    public string SignalingServiceUrl = HiFi.Constants.HIFI_API_SIGNALING_URL;
 
     /// <summary>
-    /// RaviSession
+    /// Json Web Token
+    /// </summary>
+    [Tooltip("Json Web Token (identifies client)")]
+    public string JWT;
+
+    /// <summary>
+    /// RaviSession component
     /// </summary>
     [Tooltip("RaviSession")]
     public Ravi.RaviSession RaviSession;
@@ -112,6 +169,7 @@ public class HiFiSession : MonoBehaviour {
     private AudionetConnectionState _connectionState = AudionetConnectionState.Disconnected;
     private bool _stateHasChanged = false;
     private HiFiMixerInfo _mixerInfo;
+    private Dictionary<string, RaviSessionPeerData> _peerDataMap;
 
     private void Awake() {
         Debug.Log("HiFiSession.Awake");
@@ -138,13 +196,15 @@ public class HiFiSession : MonoBehaviour {
 
     public void Connect() {
         Debug.Log("HiFiSession.Connect");
-        RaviSession.SignalUrl = SignalUrl;
-        RaviSession.Open();
-        // TODO: tie onto RaviSession state changes
-        //
-        // add all command handlers
+        SanityCheckSignalingServiceUrl();
+        // The HiFi SignalingServiceUrl expects the JWT token on the end
+        string signalUrl = SignalingServiceUrl + "?token=" + JWT;
+
+        RaviSession.Open(signalUrl);
+
+        // add command handlers
         RaviSession.CommandController.AddHandler("audionet.init", HandleAudionetInit);
-        RaviSession.CommandController.BinaryHandler = HandleRaviSessionBinaryData;
+        RaviSession.CommandController.BinaryHandler = HandleAudionetBinaryData;
     }
 
     public void Disconnect() {
@@ -161,11 +221,29 @@ public class HiFiSession : MonoBehaviour {
         RaviSession = gameObject.AddComponent<Ravi.RaviSession>() as Ravi.RaviSession;
     }
 
+    private void SanityCheckSignalingServiceUrl() {
+        // sanity check SignalingServiceUrl
+        string originalUrl = SignalingServiceUrl;
+        if (string.IsNullOrEmpty(SignalingServiceUrl)) {
+            SignalingServiceUrl = HiFi.Constants.HIFI_API_SIGNALING_URL;
+        } else {
+            if (!SignalingServiceUrl.StartsWith("ws://") && !SignalingServiceUrl.StartsWith("wss://")) {
+                SignalingServiceUrl = "ws://" + SignalingServiceUrl;
+            }
+            if (!SignalingServiceUrl.EndsWith("/")) {
+                SignalingServiceUrl += "/";
+            }
+        }
+        if (originalUrl != SignalingServiceUrl) {
+            Debug.Log($"HiFiSession.SanityCheckSignalingServiceUrl '{originalUrl}' --> '{SignalingServiceUrl}'");
+        }
+    }
+
     private void UpdateState(AudionetConnectionState newState) {
         if (_connectionState != newState) {
+            Debug.Log($"HiFiSession.UpdateState: '{_connectionState}' --> '{newState}'");
             _connectionState = newState;
             // fire the event later when we're on main thread
-            Debug.Log($"HiFiSession.UpdateState: '{_connectionState}' --> '{newState}'");
             _stateHasChanged = true;
         }
     }
@@ -176,17 +254,18 @@ public class HiFiSession : MonoBehaviour {
             if (_connectionState == AudionetConnectionState.Failed) {
                 UpdateState(AudionetConnectionState.Disconnected);
             }
-            JSONNode obj = new JSONObject();
-            obj["primary"] = true;
-            obj["visit_id"] = RaviSession.SessionId;
-            obj["session"] = RaviSession.SessionId;
-            obj["streaming_scope"] = UserDataScopeStrings[(int) UserDataStreamingScope];
-            obj["is_input_stream_stereo"] = InputAudioIsStereo;
+            JSONNode payload = new JSONObject();
+            payload["primary"] = true;
+            payload["visit_id"] = RaviSession.SessionId;
+            payload["session"] = RaviSession.SessionId;
+            payload["streaming_scope"] = UserDataScopeStrings[(int) UserDataStreamingScope];
+            payload["is_input_stream_stereo"] = InputAudioIsStereo;
             if (_connectionState == AudionetConnectionState.Disconnected) {
                 UpdateState(AudionetConnectionState.Connecting);
             }
             Debug.Log("HiFiSession SEND audionet.init");
-            bool success = RaviSession.CommandController.SendCommand("audionet.init", obj.ToString());
+            //bool success = RaviSession.CommandController.SendCommand("audionet.init", payload.ToString());
+            bool success = RaviSession.CommandController.SendCommand("audionet.init", payload);
             if (!success) {
                 UpdateState(AudionetConnectionState.Failed);
             }
@@ -205,24 +284,26 @@ public class HiFiSession : MonoBehaviour {
                 _mixerInfo.visitId = RaviSession.SessionId;
                 UpdateState(AudionetConnectionState.Connected);
             } else {
-                Debug.Log($"HandleAudionetInit RECV audionet.init response but connectionState='{_connectionState}'");
+                Debug.Log($"HiFiSession.HandleAudionetInit RECV audionet.init response with unexpected connectionState='{_connectionState}'");
             }
         } catch (Exception e) {
-            Debug.Log($"HandleAudionetInit failed to parse message='{msg}' err='{e.Message}'");
+            Debug.Log($"HiFiSession.HandleAudionetInit failed to parse message='{msg}' err='{e.Message}'");
         }
     }
 
-    private void HandleRaviSessionBinaryData(byte[] data) {
-        Debug.Log($"HandleRaviSessionBinaryData data.Length={data.Length}");
+    private void HandleAudionetBinaryData(byte[] data) {
+        Debug.Log($"HiFiSession.HandleAudionetBinaryData data.Length={data.Length}");
         // 'data' may be gzipped so we first try to decompress it
         const int MAX_UNCOMPRESSED_BUFFER_SIZE = 1024;
         byte[] uncompressedData = new byte[MAX_UNCOMPRESSED_BUFFER_SIZE];
+        //byte[] uncompressedData = new byte[];
         try {
             using(MemoryStream zipped = new MemoryStream(data)) {
-                using (MemoryStream unzipped = new MemoryStream(uncompressedData)) {
-                    using(GZipStream unzipper = new GZipStream(zipped, CompressionMode.Decompress)) {
-                        unzipper.CopyTo(unzipped);
-                    }
+                using(GZipStream unzipper = new GZipStream(zipped, CompressionMode.Decompress)) {
+                    int numBytes = unzipper.Read(uncompressedData, 0, uncompressedData.Length);
+                    Debug.Log($"HiFiSession.HandleAudionetBinaryData numBytesUncompressed={numBytes}");
+                    string uncompressedText = System.Text.Encoding.UTF8.GetString(uncompressedData, 0,  numBytes);
+                    Debug.Log($"HiFiSession.HandleAudionetBinaryData uncompressedText='{uncompressedText}'");
                 }
             }
         } catch (Exception) {
@@ -230,16 +311,39 @@ public class HiFiSession : MonoBehaviour {
             uncompressedData = data;
         }
         // TODO: figure out if this is being called in the main thread or not
-        Debug.Log($"foo = {uncompressedData.Length}");
+        Debug.Log($"HiFiSession.HandleAudionetBinaryData uncompressedData.Length={uncompressedData.Length}");
 
-         string text = System.Text.Encoding.UTF8.GetString(uncompressedData);
-        RaviSessionBinaryData sessionData = JsonUtility.FromJson<RaviSessionBinaryData>(text);
+        string text = System.Text.Encoding.UTF8.GetString(uncompressedData);
+        try {
+            //RaviSessionBinaryData sessionData = JsonUtility.FromJson<RaviSessionBinaryData>(text);
+            JSONNode obj = JSONNode.Parse(text);
+            if (obj.HasKey("peers")) {
+                JSONNode peers = obj["peers"];
+                foreach (string key in peers.Keys) {
+                    JSONNode peerInfo = peers[key];
+                    try {
+                        _peerDataMap[key].UpdateFromJson(peerInfo);
+                    } catch (KeyNotFoundException) {
+                        RaviSessionPeerData d = new RaviSessionPeerData();
+                        d.LoadDefaults();
+                        d.UpdateFromJson(peerInfo);
+                        _peerDataMap.Add(key, d);
+                    }
+                }
+            }
+            if (obj.HasKey("deleted_visit_ids")) {
+                // TODO: implement this
+            }
+            //Debug.Log($"HiFiSession.HandleAudionetBinaryData deleted_visit_ids.Length={obj.deleted_visit_ids.Length} peers.Length={sessionData.peers.Length}");
+        } catch (Exception) {
+            Debug.Log("HiFiSession.HandleAudionetBinaryData failed to parse RaviSessionBinaryData");
+        }
 
         // BOOKMARK: finish implementing this
     }
 
     private void TransmitHiFiAudioAPIData(HiFi.OutgoingAudioAPIData newData, HiFi.OutgoingAudioAPIData oldData) {
-        Debug.Log("TODO: implement this");
+        Debug.Log("RaviSession.TransmitHiFiAudioAPIData TODO: implement this");
     }
 
     public void OnRaviSessionStateChanged(Ravi.RaviSession.SessionState state) {
