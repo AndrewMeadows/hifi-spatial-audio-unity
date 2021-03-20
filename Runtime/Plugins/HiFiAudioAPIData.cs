@@ -1,19 +1,21 @@
 // HiFiAudioAPIData.cs
 
 using SimpleJSON;
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace HiFi {
 
 [System.Serializable]
 public class AudioAPIDataChanges {
-    public float? x; // pos.x
-    public float? y; // pos.y
-    public float? z; // pos.z
-    public float? W; // Q.w
-    public float? X; // Q.x
-    public float? Y; // Q.y
-    public float? Z; // Q.z
+    public float? x; // position.x
+    public float? y; // position.y
+    public float? z; // position.z
+    public float? W; // orientation.w
+    public float? X; // orientation.x
+    public float? Y; // orientation.y
+    public float? Z; // orientation.z
     public float? T; // noiseThreshold
     public float? g; // gain
     public float? a; // attenutation
@@ -25,7 +27,7 @@ public class AudioAPIDataChanges {
             && T == null && g == null && a == null && r == null;
     }
 
-    public string ToJsonString() {
+    public string ToWireFormatedJsonString() {
         JSONNode obj = new JSONObject();
         if (x.HasValue) {
             obj["x"] = x.Value;
@@ -74,34 +76,31 @@ public class AudioAPIDataChanges {
  * Member data of this class that is sent to the Server will affect the final mixed spatial audio for all listeners in the server's virtual space.
  */
 public class OutgoingAudioAPIData {
-    // NOTE: all data members are nullable types.
     /**
      * ✔ The client sends `position` data to the server when `_transmitHiFiAudioAPIDataToServer()` is called.
      *
      * ✔ The server sends `position` data to all clients connected to a server during "peer updates".
      */
-    public Vector3? _position;
+    public Vector3 _position;
     /**
      * ✔ The client sends `orientation` data to the server when `_transmitHiFiAudioAPIDataToServer()` is called.
      *
      * ✔ The server sends `orientation` data to all clients connected to a server during "peer updates".
      */
-    public Quaternion? _orientation;
+    public Quaternion _orientation;
     //Vector3 orientationEuler; // unsupported for Unity
     /**
      * A volume level below this value is considered background noise and will be smoothly gated off.
      * The floating point value is specified in dBFS (decibels relative to full scale) with values between -96 dB (indicating no gating)
      * and 0 dB. It is in the same decibel units as the VolumeDecibels component of UserDataSubscription.
-     * If you don't supply a `volueThreshold` when constructing instantiations of this class `volumeThreshold` will be `null`.
      */
-    public float? _volumeThreshold;
+    public float _volumeThreshold;
     /**
      * This value affects how loud UserA will sound to UserB at a given distance in 3D space.
      * This value also affects the distance at which UserA can be heard in 3D space.
      * Higher values for UserA means that UserA will sound louder to other users nearby, and it also means that UserA will be audible from a greater distance.
-     * If you don't supply an `hiFiGain` when constructing instantiations of this class, `hiFiGain` will be `null`.
      */
-    public float? _hiFiGain;
+    public float _hiFiGain;
     /**
      * This value affects how far a user's sound will travel in 3D space, without affecting the user's loudness.
      * By default, there is a global attenuation value (set for a given space) that applies to all users in a space. This default space
@@ -121,14 +120,11 @@ public class OutgoingAudioAPIData {
      * this setting can be used as a blunt tool to easily test attenuation, and tune it aggressively in extreme circumstances. When using linear
      * attenuation, the setting is the distance in meters at which the audio becomes totally inaudible.
      *
-     * If you don't supply an `userAttenuation` when constructing instantiations of this class, `userAttenuation` will be `null` and the
-     * default will be used.
-     *
      * ✔ The client sends `userAttenuation` data to the server when `_transmitHiFiAudioAPIDataToServer()` is called.
      *
      * ❌ The server never sends `userAttenuation` data.
      */
-    public float? _userAttenuation;
+    public float _userAttenuation;
     /**
      * @param userRolloff This value represents the progressive high frequency roll-off in meters, a measure of how the higher frequencies
      * in a user's sound are dampened as the user gets further away. By default, there is a global roll-off value (set for a given space), currently 16
@@ -138,13 +134,31 @@ public class OutgoingAudioAPIData {
      * extremely high values (e.g. 99999) should be used in combination with "broadcast mode"-style userAttenuation settings to cause the
      * broadcasted voice to sound crisp and "up close" even at very large distances.
      *
-     * If you don't supply an `userRolloff` when constructing instantiations of this class, `userRolloff` will be `null`.
-     *
      * ✔ The client sends `userRolloff` data to the server when `_transmitHiFiAudioAPIDataToServer()` is called.
      *
      * ❌ The server never sends `userRolloff` data.
      */
-    public float? _userRolloff;
+    public float _userRolloff;
+
+    public OutgoingAudioAPIData() {
+        _position = new Vector3(0.0f, 0.0f, 0.0f);
+        _orientation = new Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
+        _volumeThreshold = 0.0f;
+        _hiFiGain = 0.0f;
+        _userAttenuation = 0.0f;
+        _userRolloff = 16.0f;
+    }
+
+    public OutgoingAudioAPIData DeepCopy() {
+        OutgoingAudioAPIData other = new OutgoingAudioAPIData();
+        other._position = _position;
+        other._orientation = _orientation;
+        other._volumeThreshold = _volumeThreshold;
+        other._hiFiGain = _hiFiGain;
+        other._userAttenuation = _userAttenuation;
+        other._userRolloff = _userRolloff;
+        return other;
+    }
 
     public AudioAPIDataChanges ApplyAndGetChanges(OutgoingAudioAPIData other) {
         AudioAPIDataChanges changes = new AudioAPIDataChanges();
@@ -154,83 +168,60 @@ public class OutgoingAudioAPIData {
         }
         // Remember: all data members are nullable types!
 
-        if (other._position.HasValue) {
-            if (!_position.HasValue) {
-                Vector3 otherPos = other._position.Value;
-                _position = otherPos;
-                changes.x = otherPos.x;
-                changes.y = otherPos.y;
-                changes.z = otherPos.z;
-            } else if (_position != other._position) {
-                Vector3 pos = _position.Value;
-                Vector3 otherPos = other._position.Value;
-                if (pos.x != otherPos.x) {
-                    changes.x = otherPos.x;
-                }
-                if (pos.y != otherPos.y) {
-                    changes.y = otherPos.y;
-                }
-                if (pos.z != otherPos.z) {
-                    changes.z = otherPos.z;
-                }
-                _position = otherPos;
+        if (_position != other._position) {
+            if (_position.x != other._position.x) {
+                changes.x = other._position.x;
+                _position.x = other._position.x;
+            }
+            if (_position.y != other._position.y) {
+                changes.y = other._position.y;
+                _position.y = other._position.y;
+            }
+            if (_position.z != other._position.z) {
+                changes.z = other._position.z;
+                _position.z = other._position.z;
             }
         }
 
-        if (other._orientation.HasValue) {
-            if (!_orientation.HasValue) {
-                Quaternion otherOrientation = other._orientation.Value;
-                _orientation = otherOrientation;
-                changes.W = otherOrientation.w;
-                changes.X = otherOrientation.x;
-                changes.Y = otherOrientation.y;
-                changes.Z = otherOrientation.z;
-            } else if (_orientation != other._orientation) {
-                Quaternion orientation = _orientation.Value;
-                Quaternion otherOrientation = other._orientation.Value;
-                if (orientation.w != otherOrientation.w) {
-                    changes.W = otherOrientation.w;
-                }
-                if (orientation.x != otherOrientation.x) {
-                    changes.X = otherOrientation.x;
-                }
-                if (orientation.y != otherOrientation.y) {
-                    changes.Y = otherOrientation.y;
-                }
-                if (orientation.z != otherOrientation.z) {
-                    changes.Z = otherOrientation.z;
-                }
-                _orientation = otherOrientation;
+        if (_orientation != other._orientation) {
+            Quaternion Q = other._orientation;
+            if (_orientation.w != other._orientation.w) {
+                changes.W = other._orientation.w;
+                _orientation.w = other._orientation.w;
+            }
+            if (_orientation.x != other._orientation.x) {
+                changes.X = other._orientation.x;
+                _orientation.x = other._orientation.x;
+            }
+            if (_orientation.y != other._orientation.y) {
+                changes.Y = other._orientation.y;
+                _orientation.y = other._orientation.y;
+            }
+            if (_orientation.z != other._orientation.z) {
+                changes.Z = other._orientation.z;
+                _orientation.z = other._orientation.z;
             }
         }
 
 
-        if (other._volumeThreshold.HasValue) {
-            if (!_volumeThreshold.HasValue || _volumeThreshold != other._volumeThreshold) {
-                _volumeThreshold = other._volumeThreshold.Value;
-                changes.T = _volumeThreshold.Value;
-            }
+        if (_volumeThreshold != other._volumeThreshold) {
+            changes.T = _volumeThreshold;
+            _volumeThreshold = other._volumeThreshold;
         }
 
-        if (other._hiFiGain.HasValue) {
-            if (!_hiFiGain.HasValue || _hiFiGain != other._hiFiGain) {
-                _hiFiGain = other._hiFiGain.Value;
-                changes.g = _hiFiGain.Value;
-            }
+        if (_hiFiGain != other._hiFiGain) {
+            changes.g = _hiFiGain;
+            _hiFiGain = other._hiFiGain;
         }
 
-        if (other._userAttenuation.HasValue) {
-            if (!_userAttenuation.HasValue || _userAttenuation != other._userAttenuation) {
-                _userAttenuation = other._userAttenuation.Value;
-                changes.a = _userAttenuation.Value;
-            }
+        if (_userAttenuation != other._userAttenuation) {
+            changes.a = _userAttenuation;
+            _userAttenuation = other._userAttenuation;
         }
 
-        if (other._userRolloff.HasValue) {
-            if (!_userRolloff.HasValue || _userRolloff != other._userRolloff) {
-                _userRolloff = other._userRolloff.Value;
-                changes.r = _userRolloff.Value;
-            }
+        if (_userRolloff != other._userRolloff) {
+            changes.r = _userRolloff;
+            _userRolloff = other._userRolloff;
         }
         return changes;
     }
@@ -266,17 +257,154 @@ public class IncomingAudioAPIData : OutgoingAudioAPIData {
      *
      * ✔ The server sends `volumeDecibels` data to all clients connected to a server during "peer updates".
      */
-    public float? _volumeDecibels;
+    public float _volumeDecibels;
 
-/*
     public IncomingAudioAPIData() : base() {
-        // all fields are initialized to null in the ctor
-        _providedUserID = null;
-        _hashedVisitID = null;
-        _volumeDecibels = null;
-        // user must selectively set fields non-null after ctor
+        _providedUserID = "";
+        _hashedVisitID = "";
+        _volumeDecibels = 0.0f;
     }
-*/
+
+    public new IncomingAudioAPIData DeepCopy() {
+        IncomingAudioAPIData other = new IncomingAudioAPIData();
+        other._position = _position;
+        other._orientation = _orientation;
+        other._volumeThreshold = _volumeThreshold;
+        other._hiFiGain = _hiFiGain;
+        other._userAttenuation = _userAttenuation;
+        other._userRolloff = _userRolloff;
+
+        other._providedUserID = _providedUserID;
+        other._hashedVisitID = _hashedVisitID;
+        other._volumeDecibels = _volumeDecibels;
+        return other;
+    }
+
+    /**
+     * IncomingAudioAPIData from Server to Client is packed on the wire
+     * as a JSON string with abbreviated keys.
+     * This method takes such a JSON object as argument,
+     * translates its key-values into corresponding fields,
+     * and updates those fields.
+     * @param obj A JSON object with abbreviated keys corresponding to fields of the class.
+     * @return Returns 'true' if any field was updated, else 'false'.
+     */
+    public bool ApplyWireFormattedJson(JSONNode obj) {
+        // the key mappings are:
+        //   J = _providedUserID
+        //   e = _hashedVisitID
+        //   v = _volumeDecibels
+        //   x = Position.x
+        //   y = Position.y
+        //   z = Position.z
+        //   W = Orientation.W
+        //   X = Orientation.X
+        //   Y = Orientation.y
+        //   Z = Orientation.z
+        bool somethingChanged = false;
+        try {
+            string userID = obj["J"].Value;
+            if (_providedUserID != userID) {
+                _providedUserID = userID;
+                somethingChanged = true;
+            }
+        } catch (Exception) {
+        }
+        try {
+            string hashedVisitID = obj["e"].Value;
+            if (_hashedVisitID != hashedVisitID) {
+                _hashedVisitID = hashedVisitID;
+                somethingChanged = true;
+            }
+        } catch (Exception) {
+        }
+        try {
+            float volume = obj["v"].AsFloat;
+            if (_volumeDecibels != volume) {
+                _volumeDecibels = volume;
+                somethingChanged = true;
+            }
+        } catch (Exception) {
+        }
+        try {
+            float x = obj["x"].AsFloat;
+            if (_position.x != x) {
+                _position.x = x;
+                somethingChanged = true;
+            }
+        } catch (Exception) {
+        }
+        try {
+            float y = obj["y"].AsFloat;
+            if (_position.y != y) {
+                _position.y = y;
+                somethingChanged = true;
+            }
+        } catch (Exception) {
+        }
+        try {
+            float z = obj["z"].AsFloat;
+            if (_position.z != z) {
+                _position.z = z;
+                somethingChanged = true;
+            }
+        } catch (Exception) {
+            float W = obj["W"].AsFloat;
+            if (_orientation.w != W) {
+                _orientation.w = W;
+                somethingChanged = true;
+            }
+        }
+        try {
+            float X = obj["X"].AsFloat;
+            if (_orientation.x != X) {
+                _orientation.x = X;
+                somethingChanged = true;
+            }
+        } catch (Exception) {
+            float Y = obj["Y"].AsFloat;
+            if (_orientation.y != Y) {
+                _orientation.y = Y;
+                somethingChanged = true;
+            }
+        }
+        try {
+            float Z = obj["Z"].AsFloat;
+            if (_orientation.z != Z) {
+                _orientation.z = Z;
+                somethingChanged = true;
+            }
+        } catch (Exception) {
+        }
+        return somethingChanged;
+    }
+
+    // for debug purposes
+    public string ToWireFormattedJsonString() {
+        // the key mappings are:
+        //   J = _providedUserID
+        //   e = _hashedVisitID
+        //   v = _volumeDecibels
+        //   x = Position.x
+        //   y = Position.y
+        //   z = Position.z
+        //   W = Orientation.W
+        //   X = Orientation.X
+        //   Y = Orientation.y
+        //   Z = Orientation.z
+        JSONNode obj = new JSONObject();
+        obj["J"] = _providedUserID;
+        obj["e"] = _hashedVisitID;
+        obj["v"] = _volumeDecibels;
+        obj["x"] = _position.x;
+        obj["y"] = _position.y;
+        obj["z"] = _position.z;
+        obj["W"] = _orientation.w;
+        obj["X"] = _orientation.x;
+        obj["Y"] = _orientation.y;
+        obj["Z"] = _orientation.z;
+        return obj.ToString();
+    }
 }
 
 } // namespace HiFi

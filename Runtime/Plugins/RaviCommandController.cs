@@ -90,7 +90,7 @@ public class RaviCommandController {
 
     public void HandleMessage(byte[] msg) {
         string textMsg = System.Text.Encoding.UTF8.GetString(msg);
-        Debug.Log($"{Name}.HandleMessage msg.Length='{msg.Length}'");
+        //Debug.Log($"{Name}.HandleMessage msg.Length='{msg.Length}'");
         try {
             JSONNode obj = JSON.Parse(textMsg);
             string key = obj["c"];
@@ -101,7 +101,7 @@ public class RaviCommandController {
                 Debug.Log($"{Name}.HandleMessage failed json='{obj.ToString()}'");
             }
         } catch (Exception e) {
-            Debug.Log($"{Name}.HandleMessage could not parse msg as Json string"); // adebug
+            //Debug.Log($"{Name}.HandleMessage could not parse msg as Json string"); // adebug
             // not an error: this is expected flow
             // msg is not a JSON string
             if (e.Message == "foo") {
