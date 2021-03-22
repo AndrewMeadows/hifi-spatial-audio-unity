@@ -324,34 +324,13 @@ public class HiFiSession : MonoBehaviour {
         return false;
     }
 
-    private void SendUserData() {
-        // BOOKMARK implement this
-        // BOOKMARK TODO: scale position for wire-format
-        // also the orientation components (wtf?!)
-        // TODO: Compute changes and pack on wire.
-        Debug.Log("HiFiSession.SendAudionetInit");
-        if (RaviSession != null && RaviSession.CommandController != null) {
-            if (_connectionState == AudionetConnectionState.Failed) {
-                UpdateState(AudionetConnectionState.Disconnected);
-            }
-            JSONNode payload = new JSONObject();
-            payload["primary"] = true;
-            payload["visit_id"] = RaviSession.SessionId;
-            payload["session"] = RaviSession.SessionId;
-            payload["streaming_scope"] = UserDataScopeStrings[(int) UserDataStreamingScope];
-            payload["is_input_stream_stereo"] = InputAudioIsStereo;
-            if (_connectionState == AudionetConnectionState.Disconnected) {
-                UpdateState(AudionetConnectionState.Connecting);
-            }
-            Debug.Log("HiFiSession SEND audionet.init");
-            //bool success = RaviSession.CommandController.SendCommand("audionet.init", payload.ToString());
-            bool success = RaviSession.CommandController.SendCommand("audionet.init", payload);
-            if (!success) {
-                UpdateState(AudionetConnectionState.Failed);
-            }
-            return success;
+    private bool SendUserData() {
+        AudioAPIDataChanges changes = _lastUserData.ApplyAndGetChanges(_userData);
+        if (!changes.IsEmpty()) {
+            return RaviSession.InputController.SendTextMessage(changes.ToWireFormattedJsonString());
         }
-        return false;
+        // although we didn't send anything, consider this success
+        return true;
     }
 
     private void HandleAudionetInit(string msg) {

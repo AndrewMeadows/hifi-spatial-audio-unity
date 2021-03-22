@@ -21,35 +21,43 @@ public class AudioAPIDataChanges {
     public float? a; // attenutation
     public float? r; // rolloff
 
-    public bool IsNull() {
+    public bool IsEmpty() {
         return x == null && y == null && z == null
             && W == null && X == null && Y == null && Z == null
             && T == null && g == null && a == null && r == null;
     }
 
-    public string ToWireFormatedJsonString() {
+    public string ToWireFormattedJsonString() {
         JSONNode obj = new JSONObject();
+        // Note: we quantize position to millimeters and store as int
+        const float POSITION_TO_WIRE_SCALE_FACTOR = 1000.0f;
         if (x.HasValue) {
-            obj["x"] = x.Value;
+            obj["x"] = (int)(x.Value * POSITION_TO_WIRE_SCALE_FACTOR);
         }
         if (y.HasValue) {
-            obj["y"] = y.Value;
+            obj["y"] = (int)(y.Value * POSITION_TO_WIRE_SCALE_FACTOR);
         }
         if (z.HasValue) {
-            obj["z"] = z.Value;
+            obj["z"] = (int)(z.Value * POSITION_TO_WIRE_SCALE_FACTOR);
         }
+        // Note: we scale orientation up by 1000
+        // but do not quantize it.  This is probably a bug.
+        // We might fix it someday although if we do...
+        // we'll probably want more than 3 significant digits.
+        const float ORIENTATION_TO_WIRE_SCALE_FACTOR = 1000.0f;
         if (W.HasValue) {
-            obj["W"] = W.Value;
+            obj["W"] = W.Value * ORIENTATION_TO_WIRE_SCALE_FACTOR;
         }
         if (X.HasValue) {
-            obj["X"] = X.Value;
+            obj["X"] = X.Value * ORIENTATION_TO_WIRE_SCALE_FACTOR;
         }
         if (Y.HasValue) {
-            obj["Y"] = Y.Value;
+            obj["Y"] = Y.Value * ORIENTATION_TO_WIRE_SCALE_FACTOR;
         }
         if (Z.HasValue) {
-            obj["Z"] = Z.Value;
+            obj["Z"] = Z.Value * ORIENTATION_TO_WIRE_SCALE_FACTOR;
         }
+
         if (T.HasValue) {
             obj["T"] = T.Value;
         }
@@ -326,8 +334,9 @@ public class IncomingAudioAPIData : OutgoingAudioAPIData {
             }
         } catch (Exception) {
         }
+        const float POSITION_FROM_WIRE_SCALE_FACTOR = 1.0f / 1000.0f;
         try {
-            float x = obj["x"].AsFloat;
+            float x = obj["x"].AsFloat * POSITION_FROM_WIRE_SCALE_FACTOR;
             if (_position.x != x) {
                 _position.x = x;
                 somethingChanged = true;
@@ -335,7 +344,7 @@ public class IncomingAudioAPIData : OutgoingAudioAPIData {
         } catch (Exception) {
         }
         try {
-            float y = obj["y"].AsFloat;
+            float y = obj["y"].AsFloat * POSITION_FROM_WIRE_SCALE_FACTOR;
             if (_position.y != y) {
                 _position.y = y;
                 somethingChanged = true;
@@ -343,33 +352,40 @@ public class IncomingAudioAPIData : OutgoingAudioAPIData {
         } catch (Exception) {
         }
         try {
-            float z = obj["z"].AsFloat;
+            float z = obj["z"].AsFloat * POSITION_FROM_WIRE_SCALE_FACTOR;
             if (_position.z != z) {
                 _position.z = z;
                 somethingChanged = true;
             }
         } catch (Exception) {
-            float W = obj["W"].AsFloat;
+        }
+        const float ORIENTATION_FROM_WIRE_SCALE_FACTOR = 1.0f / 1000.0f;
+        try {
+            float W = obj["W"].AsFloat * ORIENTATION_FROM_WIRE_SCALE_FACTOR;
             if (_orientation.w != W) {
                 _orientation.w = W;
                 somethingChanged = true;
             }
+        } catch (Exception) {
         }
         try {
-            float X = obj["X"].AsFloat;
+            float X = obj["X"].AsFloat * ORIENTATION_FROM_WIRE_SCALE_FACTOR;
             if (_orientation.x != X) {
                 _orientation.x = X;
                 somethingChanged = true;
             }
         } catch (Exception) {
-            float Y = obj["Y"].AsFloat;
+        }
+        try {
+            float Y = obj["Y"].AsFloat * ORIENTATION_FROM_WIRE_SCALE_FACTOR;
             if (_orientation.y != Y) {
                 _orientation.y = Y;
                 somethingChanged = true;
             }
+        } catch (Exception) {
         }
         try {
-            float Z = obj["Z"].AsFloat;
+            float Z = obj["Z"].AsFloat *  ORIENTATION_FROM_WIRE_SCALE_FACTOR;
             if (_orientation.z != Z) {
                 _orientation.z = Z;
                 somethingChanged = true;
