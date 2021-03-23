@@ -70,12 +70,12 @@ public class RaviSession : MonoBehaviour {
         get { return _commandController; }
     }
 
-    public RaviCommandController InputController {
-        get { return _inputController; }
-    }
+    //public RaviCommandController InputController {
+    //    get { return _inputController; }
+    //}
 
     private RaviCommandController _commandController;
-    private RaviCommandController _inputController;
+    //private RaviCommandController _inputController;
     private bool _sessionStateChanged = false;
 
     private SessionState _sessionState = SessionState.New;
@@ -110,10 +110,10 @@ public class RaviSession : MonoBehaviour {
             //PeerConnection.StartConnection();
         }
         _commandController = new RaviCommandController();
-        _commandController.Name = "commandController";
-        _commandController.DataChannelStateChangedEvent += OnCommandChannelStateChanged;
-        _inputController = new RaviCommandController();
-        _inputController.Name = "inputController";
+        //_commandController.Name = "commandController";
+        _commandController.CommandChannelStateChangedEvent += OnCommandChannelStateChanged;
+        //_inputController = new RaviCommandController();
+        //_inputController.Name = "inputController";
     }
 
     private void CreatePeerConnection() {
@@ -306,12 +306,12 @@ public class RaviSession : MonoBehaviour {
         if (c.Label == "ravi.command") {
             // the 'ravi.command' DataChannel is reliable
             // and is used to exchange text "command" messages
-            _commandController.DataChannel = c;
+            _commandController.CommandChannel = c;
         } else if (c.Label == "ravi.input") {
             // /the 'ravi.input' DataChannel is unreliable
             // and is used to upload user input to the server
             // (e.g. keystrokes and mouse input)
-            _inputController.DataChannel = c;
+            _commandController.InputChannel = c;
         } else {
             Debug.Log($"RaviSession.OnDataChannelAdded failed to find controller for DataChannel.Label='{c.Label}'");
         }
@@ -347,11 +347,11 @@ public class RaviSession : MonoBehaviour {
             Debug.Log("RaviSession.SendCommand failed for null _commandController"); }
     }
 
-    public void SendInput(string command, string payload) {
-        if (_inputController != null) {
-            _inputController.SendCommand(command, payload);
+    public void SendInput(string message) {
+        if (_commandController != null) {
+            _commandController.SendInput(message);
         } else {
-            Debug.Log("RaviSession.SendInput failed for null _inputController"); }
+            Debug.Log("RaviSession.SendInput failed for null _commandController"); }
     }
 }
 

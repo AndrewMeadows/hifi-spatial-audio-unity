@@ -14,117 +14,158 @@ using UnityEngine;
 namespace Ravi {
 
 public class RaviCommandController {
-    public string Name = "commandControllerName";
+    //public string Name = "commandControllerName";
 
-    public Microsoft.MixedReality.WebRTC.DataChannel DataChannel {
+    public Microsoft.MixedReality.WebRTC.DataChannel CommandChannel {
         set  {
-            if (_dataChannel != null) {
-                _dataChannel.StateChanged -= OnDataChannelStateChanged;
-                _dataChannel.MessageReceived -= HandleMessage;
+            if (_commandChannel != null) {
+                _commandChannel.StateChanged -= OnCommandChannelStateChanged;
+                _commandChannel.MessageReceived -= HandleCommandMessage;
             }
-            _dataChannel = value;
-            if (_dataChannel != null) {
-                _dataChannel.StateChanged += OnDataChannelStateChanged;
-                _dataChannel.MessageReceived += HandleMessage;
+            _commandChannel = value;
+            if (_commandChannel != null) {
+                _commandChannel.StateChanged += OnCommandChannelStateChanged;
+                _commandChannel.MessageReceived += HandleCommandMessage;
             }
         }
-        get { return _dataChannel; }
+        get { return _commandChannel; }
+    }
+
+    public Microsoft.MixedReality.WebRTC.DataChannel InputChannel {
+        set  {
+            if (_inputChannel != null) {
+                _inputChannel.StateChanged -= OnInputChannelStateChanged;
+                _inputChannel.MessageReceived -= HandleInputMessage;
+            }
+            _inputChannel = value;
+            if (_inputChannel != null) {
+                _inputChannel.StateChanged += OnInputChannelStateChanged;
+                _inputChannel.MessageReceived += HandleInputMessage;
+            }
+        }
+        get { return _inputChannel; }
     }
 
     // there are two handler types: binary and text
     public delegate void HandleBinaryMessageDelegate(byte[] msg);
     public delegate void HandleTextMessageDelegate(string msg);
 
-    // RaviCommandController has one root binary handler: HandleMessage
-    // (see below) which will try to parse the data as JSON string.  If
-    // successful it will try to parse the JSON object as a 'c' command with
-    // 'p' payload.  It will look in a map of handlers for matching command
-    // and submit the message to the corresponding handler.
-    private Dictionary<string, HandleTextMessageDelegate> _handlers;
-
-    // If the JSON parse failed, or the JSON object but did not have expected
-    // structure, or the command was not found in the map then it will submit
-    // the raw messaage data to BinaryHandler.  Ravi users can set this
-    // handler to parse custom messages.
-    public HandleBinaryMessageDelegate BinaryHandler;
+    private Dictionary<string, HandleTextMessageDelegate> _commandHandlers;
+    public HandleBinaryMessageDelegate BinaryCommandHandler;
+    public HandleBinaryMessageDelegate BinaryInputHandler;
 
     public delegate void DataChannelStateChangedDelegate(Microsoft.MixedReality.WebRTC.DataChannel.ChannelState state);
-    public event DataChannelStateChangedDelegate DataChannelStateChangedEvent;
+    public event DataChannelStateChangedDelegate CommandChannelStateChangedEvent;
+    public event DataChannelStateChangedDelegate InputChannelStateChangedEvent;
 
-    private Microsoft.MixedReality.WebRTC.DataChannel _dataChannel;
+    private Microsoft.MixedReality.WebRTC.DataChannel _commandChannel;
+    private Microsoft.MixedReality.WebRTC.DataChannel _inputChannel;
 
     public RaviCommandController() {
-        _handlers = new Dictionary<string, HandleTextMessageDelegate>();
+        _commandHandlers = new Dictionary<string, HandleTextMessageDelegate>();
     }
 
     public bool AddHandler(string key, HandleTextMessageDelegate handler) {
+        Debug.Log($"RaviCommandController.AddHandler key='{key}'");
         if (String.IsNullOrEmpty(key)) {
-            Debug.Log($"{Name}.AddHandler cowardly refuses to add handler for empty key");
+            Debug.Log("RaviCommandController.AddHandler cowardly refuses to add handler for empty key");
             return false;
         }
         if (handler == null) {
-            Debug.Log($"{Name}.AddHandler cowardly refuses to add null handler for key='{key}'");
+            Debug.Log($"RaviCommandController.AddHandler cowardly refuses to add null handler for key='{key}'");
             return false;
         }
-        if (_handlers.ContainsKey(key)) {
-            _handlers[key] = handler;
+        if (_commandHandlers.ContainsKey(key)) {
+            _commandHandlers[key] = handler;
         } else {
-            _handlers.Add(key, handler);
+            _commandHandlers.Add(key, handler);
         }
         return true;
     }
 
     public bool RemoveHandler(string key) {
-        if (_handlers.ContainsKey(key)) {
-            _handlers.Remove(key);
+        if (_commandHandlers.ContainsKey(key)) {
+            _commandHandlers.Remove(key);
             return true;
         }
-        Debug.Log($"{Name}.RemoveHandler could not find key='{key}'");
+        Debug.Log($"RaviCommandController.RemoveHandler could not find key='{key}'");
         return false;
     }
 
-    private void OnDataChannelStateChanged() {
-        Debug.Log($"{Name}.OnDataChannelStateChanged state='{_dataChannel.State}'");
-        DataChannelStateChangedEvent?.Invoke(_dataChannel.State);
+    private void OnCommandChannelStateChanged() {
+        Debug.Log($"RaviCommandController.OnCommandChannelStateChanged state='{_commandChannel.State}'");
+        CommandChannelStateChangedEvent?.Invoke(_commandChannel.State);
     }
 
-    public void HandleMessage(byte[] msg) {
+    private void OnInputChannelStateChanged() {
+        Debug.Log($"RaviCommandController.OnInputChannelStateChanged state='{_inputChannel.State}'");
+        InputChannelStateChangedEvent?.Invoke(_inputChannel.State);
+    }
+
+    public void HandleCommandMessage(byte[] msg) {
         string textMsg = System.Text.Encoding.UTF8.GetString(msg);
-        //Debug.Log($"{Name}.HandleMessage msg.Length='{msg.Length}'");
+        //Debug.Log($"RaviCommandController.HandleCommandMessage msg.Length='{msg.Length}'");
         try {
             JSONNode obj = JSON.Parse(textMsg);
             string key = obj["c"];
-            if (_handlers.ContainsKey(key)) {
-                _handlers[key](obj["p"]);
+            if (_commandHandlers.ContainsKey(key)) {
+                _commandHandlers[key](obj["p"]);
             } else {
-                Debug.Log($"{Name}.HandleMessage failed to find handler for command='{textMsg}'");
-                Debug.Log($"{Name}.HandleMessage failed json='{obj.ToString()}'");
+                Debug.Log($"RaviCommandController.HandleCommandMessage failed to find handler for command='{textMsg}'");
+                Debug.Log($"RaviCommandController.HandleCommandMessage failed json='{obj.ToString()}'");
             }
-        } catch (Exception e) {
-            //Debug.Log($"{Name}.HandleMessage could not parse msg as Json string"); // adebug
+        } catch (Exception) {
             // not an error: this is expected flow
             // msg is not a JSON string
-            if (e.Message == "foo") {
-                Debug.Log($"{Name}.HandleMessage should not reach here");
-            }
-            if (BinaryHandler != null) {
+            if (BinaryCommandHandler != null) {
                 try {
-                    BinaryHandler(msg);
-                } catch (Exception ee) {
-                    Debug.Log($"{Name}.HandleMessage failed err='{ee.Message}'");
+                    BinaryCommandHandler(msg);
+                } catch (Exception e) {
+                    Debug.Log($"RaviCommandController.HandleCommandMessage failed err='{e.Message}'");
                 }
             }
         }
     }
 
-    public bool SendCommand(string command, JSONNode payload) {
-        Debug.Log($"{Name}.SendCommand command='{command}' payload='{payload}'");
-        JSONNode obj = new JSONObject();
-        obj["c"] = command;
-        obj["p"] = payload;
-        return SendTextMessage(obj.ToString());
+    public void HandleInputMessage(byte[] msg) {
+        // We don't expect any messages from the server on _inputChannel
+        // but if we did, then this is where we'd handle them.  In an effort to
+        // future-proof we offer this hook: try a custom input message handler.
+        if (BinaryInputHandler != null) {
+            try {
+                BinaryInputHandler(msg);
+            } catch (Exception e) {
+                Debug.Log($"RaviCommandController.HandleInputMessage failed err='{e.Message}'");
+            }
+        }
     }
 
+    public bool SendCommand(string command, JSONNode payload) {
+        Debug.Log($"RaviCommandController.SendCommand command='{command}' payload='{payload}'");
+        try {
+            JSONNode obj = new JSONObject();
+            obj["c"] = command;
+            obj["p"] = payload;
+            _commandChannel.SendMessage(System.Text.Encoding.UTF8.GetBytes(obj.ToString()));
+        } catch (Exception e) {
+            Debug.Log($"RaviCommandController.SendCommand failed err='{e.Message}'");
+            return false;
+        }
+        return true;
+    }
+
+    public bool SendInput(string msg) {
+        Debug.Log($"RaviCommandController.SendInput msg='{msg}' msg.Length={msg.Length}");
+        try {
+            _inputChannel.SendMessage(System.Text.Encoding.UTF8.GetBytes(msg));
+        } catch (Exception e) {
+            Debug.Log($"RaviCommandController.SendTextMessage failed err='{e.Message}'");
+            return false;
+        }
+        return true;
+    }
+
+    /*
     public bool SendTextMessage(string msg) {
         Debug.Log($"{Name}.SendTextCommand msg='{msg}' msg.Length={msg.Length}");
         try {
@@ -135,6 +176,7 @@ public class RaviCommandController {
         }
         return true;
     }
+    */
 }
 
 } // namespace

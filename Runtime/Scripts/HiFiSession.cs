@@ -161,7 +161,7 @@ public class HiFiSession : MonoBehaviour {
     private Dictionary<string, string> _peerKeyMap; // hashdVisitId-->"peer key"
     private SortedSet<string> _changedPeerKeys;
     private SortedSet<string> _deletedVisitIds;
-    private object _peerDataLock;
+    //private object _peerDataLock;
 
     private OutgoingAudioAPIData _userData;
     private OutgoingAudioAPIData _lastUserData;
@@ -184,6 +184,7 @@ public class HiFiSession : MonoBehaviour {
         _peerKeyMap = new Dictionary<string, string>();
         _changedPeerKeys = new SortedSet<string>();
         _deletedVisitIds = new SortedSet<string>();
+        //_peerDataLock = new object();
     }
 
     private void Start() {
@@ -197,7 +198,6 @@ public class HiFiSession : MonoBehaviour {
         }
         if (_userDataHasChanged) {
             // TODO: send data to server
-            Debug.Log("adebug _userDataHasChanged");
             _userDataHasChanged = false;
             SendUserData();
         }
@@ -207,7 +207,7 @@ public class HiFiSession : MonoBehaviour {
             _peerDataHasChanged = false;
             if (PeerDataUpdatedEvent != null) {
                 List<IncomingAudioAPIData> changedPeers = new List<IncomingAudioAPIData>();
-                lock (_peerDataLock) {
+                lock (_peerDataMap) {
                     foreach (string key in _changedPeerKeys) {
                         IncomingAudioAPIData peer;
                         if (_peerDataMap.TryGetValue(key, out peer)) {
@@ -224,7 +224,7 @@ public class HiFiSession : MonoBehaviour {
         if (_peersHaveDisconnected) {
             // grab reference to _deletedVisitIds
             SortedSet<string> deletedVisitIds = _deletedVisitIds;
-            lock (_peerDataLock) {
+            lock (_peerDataMap) {
                 // swap in a new _deletedVisitIds while under lock
                 _peersHaveDisconnected = false;
                 _deletedVisitIds = new SortedSet<string>();
@@ -234,9 +234,9 @@ public class HiFiSession : MonoBehaviour {
     }
 
     private void DumpPeerData() { // debug
-        lock (_peerDataLock) {
+        lock (_peerDataMap) {
             foreach (KeyValuePair<string, IncomingAudioAPIData> kvp in _peerDataMap) {
-                Debug.Log($"adebug key={kvp.Key} value={kvp.Value.ToWireFormattedJsonString()}");
+                Debug.Log($"HiFiSession.DumpPeerData key={kvp.Key} value={kvp.Value.ToWireFormattedJsonString()}");
             }
         }
     }
@@ -254,7 +254,7 @@ public class HiFiSession : MonoBehaviour {
 
         // add command handlers
         RaviSession.CommandController.AddHandler("audionet.init", HandleAudionetInit);
-        RaviSession.CommandController.BinaryHandler = HandleAudionetBinaryData;
+        RaviSession.CommandController.BinaryCommandHandler = HandleAudionetBinaryData;
     }
 
     public void Disconnect() {
@@ -327,7 +327,7 @@ public class HiFiSession : MonoBehaviour {
     private bool SendUserData() {
         AudioAPIDataChanges changes = _lastUserData.ApplyAndGetChanges(_userData);
         if (!changes.IsEmpty()) {
-            return RaviSession.InputController.SendTextMessage(changes.ToWireFormattedJsonString());
+            return RaviSession.CommandController.SendInput(changes.ToWireFormattedJsonString());
         }
         // although we didn't send anything, consider this success
         return true;
@@ -356,7 +356,6 @@ public class HiFiSession : MonoBehaviour {
         // 'data' may be gzipped so we first try to decompress it
         const int MAX_UNCOMPRESSED_BUFFER_SIZE = 1024;
         byte[] uncompressedData = new byte[MAX_UNCOMPRESSED_BUFFER_SIZE];
-        //byte[] uncompressedData = new byte[];
         try {
             using(MemoryStream zipped = new MemoryStream(data)) {
                 using(GZipStream unzipper = new GZipStream(zipped, CompressionMode.Decompress)) {
@@ -373,7 +372,7 @@ public class HiFiSession : MonoBehaviour {
         //Debug.Log($"HiFiSession.HandleAudionetBinaryData uncompressedData.Length={uncompressedData.Length}");
 
         string text = System.Text.Encoding.UTF8.GetString(uncompressedData);
-        lock (_peerDataLock) {
+        lock (_peerDataMap) {
             try {
                 //RaviSessionBinaryData sessionData = JsonUtility.FromJson<RaviSessionBinaryData>(text);
                 JSONNode obj = JSONNode.Parse(text);
@@ -388,14 +387,17 @@ public class HiFiSession : MonoBehaviour {
                             IncomingAudioAPIData d = new IncomingAudioAPIData();
                             somethingChanged = d.ApplyWireFormattedJson(peerInfo);
                             _peerDataMap.Add(key, d);
-                            if (peerInfo.HasKey("hashed_visit_id")) {
+                            if (peerInfo.HasKey("e")) {
                                 // unforunately the "key" to IncomingAudioAPIData is not the same "key"
                                 // used to indicate a peer has disconnected, so we maintain a Map
                                 // between these two keys to quickly figure out which peers are being
                                 // disconnected
-                                _peerKeyMap.Add(peerInfo["hashed_visit_id"], key);
-                            } else {
-                                Debug.Log($"WARNING: no key='{key}' has no 'hashed_visit_id'");
+                                string hashedVisitId = peerInfo["e"];
+                                if (_peerKeyMap.ContainsKey(hashedVisitId)) {
+                                    _peerKeyMap[hashedVisitId] = key;
+                                } else {
+                                    _peerKeyMap.Add(hashedVisitId, key);
+                                }
                             }
                             _changedPeerKeys.Add(key);
                         }

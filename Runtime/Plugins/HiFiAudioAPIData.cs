@@ -174,8 +174,6 @@ public class OutgoingAudioAPIData {
         if (other == null) {
             return changes;
         }
-        // Remember: all data members are nullable types!
-
         if (_position != other._position) {
             if (_position.x != other._position.x) {
                 changes.x = other._position.x;
