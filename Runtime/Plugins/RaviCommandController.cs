@@ -13,8 +13,7 @@ using UnityEngine;
 
 namespace Ravi {
 
-public class RaviCommandController : UnityEngine.Object {
-    //public string Name = "commandControllerName";
+public class RaviCommandController {
 
     public Microsoft.MixedReality.WebRTC.DataChannel CommandChannel {
         set  {

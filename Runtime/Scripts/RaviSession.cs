@@ -67,15 +67,12 @@ public class RaviSession : MonoBehaviour {
     public Transceiver.Direction DesiredAudioDirection = Transceiver.Direction.SendReceive;
 
     public RaviCommandController CommandController {
-        get { return _commandController; }
+        get {
+            return _commandController;
+        }
     }
 
-    //public RaviCommandController InputController {
-    //    get { return _inputController; }
-    //}
-
     private RaviCommandController _commandController;
-    //private RaviCommandController _inputController;
     private bool _sessionStateChanged = false;
 
     private SessionState _sessionState = SessionState.New;
@@ -109,10 +106,7 @@ public class RaviSession : MonoBehaviour {
             //PeerConnection.StartConnection();
         }
         _commandController = new RaviCommandController();
-        //_commandController.Name = "commandController";
         _commandController.CommandChannelStateChangedEvent += OnCommandChannelStateChanged;
-        //_inputController = new RaviCommandController();
-        //_inputController.Name = "inputController";
     }
 
     private void CreatePeerConnection() {
@@ -125,8 +119,14 @@ public class RaviSession : MonoBehaviour {
         PeerConnection.OnInitialized.AddListener(OnPeerConnectionInitialized);
         PeerConnection.OnShutdown.AddListener(OnPeerConnectionShutdown);
 
-        // create the audio components
-        AudioSource audioSource = gameObject.AddComponent<AudioSource>() as AudioSource;
+        // create an audioSource on gameObject if none exist yet
+        AudioSource audioSource = gameObject.GetComponent<AudioSource>();
+        if (audioSource == null) {
+            audioSource = gameObject.AddComponent<AudioSource>() as AudioSource;
+        }
+        audioSource.panStereo = 0.0f;
+        audioSource.spatialBlend = 0.0f;
+
         MicrophoneSource micSource = gameObject.AddComponent<MicrophoneSource>() as MicrophoneSource;
         AudioReceiver audioReceiver = gameObject.AddComponent<AudioReceiver>() as AudioReceiver;
         Microsoft.MixedReality.WebRTC.Unity.AudioRenderer audioRenderer =
@@ -138,7 +138,7 @@ public class RaviSession : MonoBehaviour {
         audioLine.Source = micSource;
         audioLine.Receiver = audioReceiver;
         audioReceiver.AudioStreamStarted.AddListener(audioRenderer.StartRendering);
-        // Note: the AudioRenderer will automatically find AudioSource on gameObject
+        // Note: the AudioRenderer will automatically find audioSource on gameObject
         // and will play through that.  Also, we don't bother creating an AudioListener
         // component -- we assume one exists.
     }
@@ -155,7 +155,6 @@ public class RaviSession : MonoBehaviour {
 
     public void Update() {
         if (_sessionStateChanged) {
-            bool eventIsNull = (SessionStateChangedEvent == null);
             _sessionStateChanged = false;
             SessionStateChangedEvent?.Invoke(_sessionState);
         }

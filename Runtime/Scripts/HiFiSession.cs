@@ -186,6 +186,7 @@ public class HiFiSession : MonoBehaviour {
         // By default disable most logging.
         // This can be overrdden for debuggin by external code after this hard-coded setting.
         LogUtil.GlobalMaxLogLevel = LogUtil.LogLevel.UncommonEvent;
+        //LogUtil.GlobalMaxLogLevel = LogUtil.LogLevel.Debug;
     }
 
     private void Start() {
@@ -196,8 +197,8 @@ public class HiFiSession : MonoBehaviour {
             _stateHasChanged = false;
             ConnectionStateChangedEvent?.Invoke(_connectionState);
         }
-        if (_userDataHasChanged) {
-            // TODO: send data to server
+        if (_connectionState == AudionetConnectionState.Connected && _userDataHasChanged) {
+            // TODO: add a way to rate-limit SendUserData()
             _userDataHasChanged = false;
             SendUserData();
         }
@@ -246,7 +247,6 @@ public class HiFiSession : MonoBehaviour {
     }
 
     public void Connect() {
-        Debug.Log($"adebug GlobalMaxLogLevel={LogUtil.GlobalMaxLogLevel}");
         LogUtil.LogUncommonEvent(this, "Connect");
         SanityCheckSignalingServiceUrl();
         // The HiFi SignalingServiceUrl expects the JWT token on the end
@@ -316,13 +316,14 @@ public class HiFiSession : MonoBehaviour {
                 UpdateState(AudionetConnectionState.Connecting);
             }
             LogUtil.LogUncommonEvent(this, "SEND audionet.init");
-            //bool success = RaviSession.CommandController.SendCommand("audionet.init", payload.ToString());
             bool success = RaviSession.CommandController.SendCommand("audionet.init", payload);
             if (!success) {
+                LogUtil.LogWarning(this, "SEND audionet.init failed");
                 UpdateState(AudionetConnectionState.Failed);
             }
             return success;
         }
+        LogUtil.LogError(this, "SendAudionetInit failed for null RaviSession or CommandController");
         return false;
     }
 
@@ -428,9 +429,11 @@ public class HiFiSession : MonoBehaviour {
     }
 
     public void OnRaviSessionStateChanged(Ravi.RaviSession.SessionState state) {
-        LogUtil.LogUncommonEvent(this, "OnRaviSessionStateChanged state='{0}'", state);
         if (state == Ravi.RaviSession.SessionState.Connected) {
-            SendAudionetInit();
+            bool success = SendAudionetInit();
+            if (!success) {
+                // TODO?: is there a way to recover from this?  Do we care?
+            }
         }
     }
 }
