@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace Ravi {
 
-public class RaviCommandController {
+public class RaviCommandController : UnityEngine.Object {
     //public string Name = "commandControllerName";
 
     public Microsoft.MixedReality.WebRTC.DataChannel CommandChannel {
@@ -66,13 +66,13 @@ public class RaviCommandController {
     }
 
     public bool AddHandler(string key, HandleTextMessageDelegate handler) {
-        Debug.Log($"RaviCommandController.AddHandler key='{key}'");
+        HiFi.LogUtil.LogUncommonEvent(this, "AddHandler key='{0}'", key);
         if (String.IsNullOrEmpty(key)) {
-            Debug.Log("RaviCommandController.AddHandler cowardly refuses to add handler for empty key");
+            HiFi.LogUtil.LogWarning(this, "AddHandler cowardly refuses to add handler for empty key");
             return false;
         }
         if (handler == null) {
-            Debug.Log($"RaviCommandController.AddHandler cowardly refuses to add null handler for key='{key}'");
+            HiFi.LogUtil.LogWarning(this, "AddHandler cowardly refuses to add null handler for key='{0}'", key);
             return false;
         }
         if (_commandHandlers.ContainsKey(key)) {
@@ -88,31 +88,27 @@ public class RaviCommandController {
             _commandHandlers.Remove(key);
             return true;
         }
-        Debug.Log($"RaviCommandController.RemoveHandler could not find key='{key}'");
+        HiFi.LogUtil.LogWarning(this, "RemoveHandler could not find key='{0}'", key);
         return false;
     }
 
     private void OnCommandChannelStateChanged() {
-        Debug.Log($"RaviCommandController.OnCommandChannelStateChanged state='{_commandChannel.State}'");
         CommandChannelStateChangedEvent?.Invoke(_commandChannel.State);
     }
 
     private void OnInputChannelStateChanged() {
-        Debug.Log($"RaviCommandController.OnInputChannelStateChanged state='{_inputChannel.State}'");
         InputChannelStateChangedEvent?.Invoke(_inputChannel.State);
     }
 
     public void HandleCommandMessage(byte[] msg) {
         string textMsg = System.Text.Encoding.UTF8.GetString(msg);
-        //Debug.Log($"RaviCommandController.HandleCommandMessage msg.Length='{msg.Length}'");
         try {
             JSONNode obj = JSON.Parse(textMsg);
             string key = obj["c"];
             if (_commandHandlers.ContainsKey(key)) {
                 _commandHandlers[key](obj["p"]);
             } else {
-                Debug.Log($"RaviCommandController.HandleCommandMessage failed to find handler for command='{textMsg}'");
-                Debug.Log($"RaviCommandController.HandleCommandMessage failed json='{obj.ToString()}'");
+                HiFi.LogUtil.LogWarning(this, "HandleCommandMessage no handler for command='{0}'", textMsg);
             }
         } catch (Exception) {
             // not an error: this is expected flow
@@ -121,7 +117,7 @@ public class RaviCommandController {
                 try {
                     BinaryCommandHandler(msg);
                 } catch (Exception e) {
-                    Debug.Log($"RaviCommandController.HandleCommandMessage failed err='{e.Message}'");
+                    HiFi.LogUtil.LogError(this, "HandleCommandMessage failed err='{0}'", e.Message);
                 }
             }
         }
@@ -135,48 +131,35 @@ public class RaviCommandController {
             try {
                 BinaryInputHandler(msg);
             } catch (Exception e) {
-                Debug.Log($"RaviCommandController.HandleInputMessage failed err='{e.Message}'");
+                HiFi.LogUtil.LogError(this, "HandleInputMessage failed err='{0}'", e.Message);
             }
         }
     }
 
     public bool SendCommand(string command, JSONNode payload) {
-        Debug.Log($"RaviCommandController.SendCommand command='{command}' payload='{payload}'");
+        HiFi.LogUtil.LogDebug(this, "SendCommand command='{0}' payload='{1}'", command, payload);
         try {
             JSONNode obj = new JSONObject();
             obj["c"] = command;
             obj["p"] = payload;
             _commandChannel.SendMessage(System.Text.Encoding.UTF8.GetBytes(obj.ToString()));
         } catch (Exception e) {
-            Debug.Log($"RaviCommandController.SendCommand failed err='{e.Message}'");
+            HiFi.LogUtil.LogError(this, "SendCommand failed err='{0}'", e.Message);
             return false;
         }
         return true;
     }
 
     public bool SendInput(string msg) {
-        Debug.Log($"RaviCommandController.SendInput msg='{msg}' msg.Length={msg.Length}");
+        HiFi.LogUtil.LogDebug(this, "SendInput msg='{0}' msg.Length={1}", msg, msg.Length);
         try {
             _inputChannel.SendMessage(System.Text.Encoding.UTF8.GetBytes(msg));
         } catch (Exception e) {
-            Debug.Log($"RaviCommandController.SendTextMessage failed err='{e.Message}'");
+            HiFi.LogUtil.LogError(this, "SendTextMessage failed err='{0}'", e.Message);
             return false;
         }
         return true;
     }
-
-    /*
-    public bool SendTextMessage(string msg) {
-        Debug.Log($"{Name}.SendTextCommand msg='{msg}' msg.Length={msg.Length}");
-        try {
-            _dataChannel.SendMessage(System.Text.Encoding.UTF8.GetBytes(msg));
-        } catch (Exception e) {
-            Debug.Log($"{Name}.SendTextMessage failed err='{e.Message}'");
-            return false;
-        }
-        return true;
-    }
-    */
 }
 
 } // namespace

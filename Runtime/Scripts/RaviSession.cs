@@ -82,7 +82,6 @@ public class RaviSession : MonoBehaviour {
     private Microsoft.MixedReality.WebRTC.PeerConnection _realPeerConnection;
 
     public void Awake() {
-        Debug.Log("RaviSession.Awake");
         // Connect to PeerConnection and Signaler
         //
         // If PeerConnection is non-null then we assume it has been completely configured
@@ -117,7 +116,7 @@ public class RaviSession : MonoBehaviour {
     }
 
     private void CreatePeerConnection() {
-        Debug.Log("RaviSession.CreatePeerConnection");
+        HiFi.LogUtil.LogUncommonEvent(this, "CreatePeerConnection");
         // This provides an example of what components need to be created and how they
         // should be connected.  This could be done through manual clicks in the Unity GUI.
         PeerConnection = gameObject.AddComponent<Microsoft.MixedReality.WebRTC.Unity.PeerConnection>()
@@ -145,14 +144,13 @@ public class RaviSession : MonoBehaviour {
     }
 
     private void CreateSignaler() {
-        Debug.Log("RaviSession.CreateSignaler");
+        HiFi.LogUtil.LogDebug(this, "CreateSignaler");
         Signaler = gameObject.AddComponent<RaviSignaler>() as RaviSignaler;
         //Signaler.LogVerbosity = Ravi.RaviSignaler.Verbosity.SingleEvents; // DEBUG
         Signaler.SignalStateChangedEvent += OnSignalStateChanged;
     }
 
     public void Start() {
-        Debug.Log("RaviSession.Start");
     }
 
     public void Update() {
@@ -164,7 +162,7 @@ public class RaviSession : MonoBehaviour {
     }
 
     public void Open(string signalUrl) {
-        Debug.Log("RaviSession.Open");
+        HiFi.LogUtil.LogUncommonEvent(this, "Open");
         if (_sessionState == SessionState.New || _sessionState == SessionState.Closed) {
             // Open signal socket and try to get a _realPeerConnection
             if (PeerConnection == null) {
@@ -178,7 +176,7 @@ public class RaviSession : MonoBehaviour {
     }
 
     private IEnumerator Connect(string signalUrl) {
-        Debug.Log("RaviSession.Connect");
+        HiFi.LogUtil.LogUncommonEvent(this, "Connect");
         UpdateSessionState(SessionState.Connecting);
         if (Signaler.State == RaviSignaler.SignalState.New
             || Signaler.State == RaviSignaler.SignalState.Failed
@@ -203,12 +201,12 @@ public class RaviSession : MonoBehaviour {
         while (_sessionState == SessionState.Connecting) {
             if (expiry < DateTime.Now) {
                 UpdateSessionState(SessionState.Failed);
-                Debug.Log("RaviSession.Connect timed out");
+                HiFi.LogUtil.LogWarning(this, "Connect timed out");
                 yield break;
             }
             yield return 1;
         }
-        Debug.Log("RaviSession.Connect completed");
+        HiFi.LogUtil.LogDebug(this, "Connect completed");
     }
 
     public void Close() {
@@ -217,7 +215,8 @@ public class RaviSession : MonoBehaviour {
 
     private void UpdateSessionState(SessionState newState) {
         if (newState != _sessionState) {
-            Debug.Log($"RaviSession.UpdateSessionState '{_sessionState}' --> '{newState}'");
+            HiFi.LogUtil.LogUncommonEvent(this, "UpdateSessionState {0}-->{1}",
+                _sessionState, newState);
             _sessionState = newState;
             // Just in case this happens on a side thread we remember for later
             // and invoke the event callbacks in Update() on the main thread.
@@ -231,7 +230,7 @@ public class RaviSession : MonoBehaviour {
         _realPeerConnection = PeerConnection.Peer;
 
         // yay! we have a _realPeerConnection
-        Debug.Log("RaviSession.OnPeerConnectionInitialized");
+        HiFi.LogUtil.LogUncommonEvent(this, "OnPeerConnectionInitialized");
 
         // connect listeners to _realPeerConnection delegates/events
         // the _realPeerConnection has the following delegates/events of interest:
@@ -251,41 +250,17 @@ public class RaviSession : MonoBehaviour {
     }
 
     private void OnPeerConnectionShutdown() {
-        Debug.Log("RaviSession.OnPeerConnectionShutdown");
+        HiFi.LogUtil.LogUncommonEvent(this, "OnPeerConnectionShutdown");
         UpdateSessionState(SessionState.Disconnected);
     }
 
     private void OnSignalStateChanged(RaviSignaler.SignalState state) {
-        Debug.Log($"RaviSession.OnSignalStateChanged signalState='{state}' sessionState='{_sessionState}'");
-        /*
-        switch (state) {
-            case RaviSignaler.SignaSignalnecting:
-                if (_sessionState != SessionState.Connecting) {
-                    Debug.Log($"Unexpected: signalState='{state}' but sessionState='{_sessionState}'");
-                }
-                break;
-            case RaviSignaler.SignalState.Open:
-                //if (_sessionState != SessionState.Connecting) {
-                break;
-            case RaviSignaler.SignalState.Open:
-                break;
-            case RaviSignaler.SignalState.Open:
-                break;
-            case RaviSignaler.SignalState.Open:
-                break;
-            case RaviSignaler.SignalState.Open:
-                break;
-            default:
-                break;
-        }
-        if (state == RaviSignaler.SignalState == RaviSignaler.SignalState.Open) {
-            Debug.Log("woot!");
-        }
-        */
+        HiFi.LogUtil.LogDebug(this, "OnSignalStateChanged signalState={0} sessionState={1}", state, _sessionState);
     }
 
     void OnTransceiverAdded(Transceiver t) {
-        Debug.Log($"RaviSession.OnTransceiverAdded Name='{t.Name}' Kind='{t.MediaKind}' DesiredDir='{t.DesiredDirection}' negotiatedDir='{t.NegotiatedDirection}'");
+        HiFi.LogUtil.LogUncommonEvent(this, "OnTransceiverAdded Name='{0}' kind={1} desiredDir={2} negotiatedDir={3}",
+            t.Name, t.MediaKind, t.DesiredDirection, t.NegotiatedDirection);
         t.DirectionChanged += this.OnTransceiverDirectionChanged;
         if (t.MediaKind == Microsoft.MixedReality.WebRTC.MediaKind.Audio && t.DesiredDirection != DesiredAudioDirection) {
             // this will trigger a renegotiation
@@ -294,15 +269,17 @@ public class RaviSession : MonoBehaviour {
     }
 
     void OnAudioTrackAdded(RemoteAudioTrack u) {
-        Debug.Log($"RaviSession.OnAudioTrackAdded Name='{u.Name}' enabled={u.Enabled} isOutputTofDevice={u.IsOutputToDevice()}");
+        HiFi.LogUtil.LogUncommonEvent(this, "OnAudioTrackAdded Name='{0}' enabled={1} isOutputTofDevice={2}",
+            u.Name, u.Enabled, u.IsOutputToDevice());
     }
 
     void OnAudioTrackRemoved(Transceiver t, RemoteAudioTrack u) {
-        Debug.Log($"RaviSession.OnAudioTrackRemoved Name='{u.Name}'");
+        HiFi.LogUtil.LogUncommonEvent(this, "OnAudioTrackRemoved Name='{0}'", u.Name);
     }
 
     void OnDataChannelAdded(DataChannel c) {
-        Debug.Log($"RaviSession.OnDataChannelAdded label='{c.Label}' ordered={c.Ordered} reliable={c.Reliable}");
+        HiFi.LogUtil.LogUncommonEvent(this, "OnDataChannelAdded label='{0}' ordered={1} reliable={2}",
+            c.Label, c.Ordered, c.Reliable);
         if (c.Label == "ravi.command") {
             // the 'ravi.command' DataChannel is reliable
             // and is used to exchange text "command" messages
@@ -313,7 +290,7 @@ public class RaviSession : MonoBehaviour {
             // (e.g. keystrokes and mouse input)
             _commandController.InputChannel = c;
         } else {
-            Debug.Log($"RaviSession.OnDataChannelAdded failed to find controller for DataChannel.Label='{c.Label}'");
+            HiFi.LogUtil.LogError(this, "OnDataChannelAdded failed to find controller for DataChannel.Label='{0}'", c.Label);
         }
     }
 
@@ -330,28 +307,29 @@ public class RaviSession : MonoBehaviour {
     }
 
     void OnDataChannelRemoved(DataChannel c) {
-        Debug.Log($"RaviSession.OnDataChannelRemoved label='{c.Label}'");
+        HiFi.LogUtil.LogUncommonEvent(this, "OnDataChannelRemoved label='{0}'", c.Label);
         if (c.Label == "ravi.command" && _sessionState == SessionState.Connected) {
             UpdateSessionState(SessionState.Disconnected);
         }
     }
 
     void OnTransceiverDirectionChanged(Transceiver t) {
-        Debug.Log($"RaviSession.OnTransceiverDirectionChanged Name='{t.Name}' Kind='{t.MediaKind}' DesiredDir='{t.DesiredDirection}' negotiatedDir='{t.NegotiatedDirection}'");
+        HiFi.LogUtil.LogUncommonEvent(this, "OnTransceiverDirectionChanged Name='{0}' Kind='{1}' DesiredDir='{2}' negotiatedDir='{3}'",
+            t.Name, t.MediaKind, t.DesiredDirection, t.NegotiatedDirection);
     }
 
     public void SendCommand(string command, string payload) {
         if (_commandController != null) {
             _commandController.SendCommand(command, payload);
         } else {
-            Debug.Log("RaviSession.SendCommand failed for null _commandController"); }
+            HiFi.LogUtil.LogError(this, "SendCommand failed for null _commandController"); }
     }
 
     public void SendInput(string message) {
         if (_commandController != null) {
             _commandController.SendInput(message);
         } else {
-            Debug.Log("RaviSession.SendInput failed for null _commandController"); }
+            HiFi.LogUtil.LogError(this, "SendInput failed for null _commandController"); }
     }
 }
 

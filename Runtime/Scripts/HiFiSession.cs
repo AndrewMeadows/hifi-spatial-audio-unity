@@ -161,7 +161,6 @@ public class HiFiSession : MonoBehaviour {
     private Dictionary<string, string> _peerKeyMap; // hashdVisitId-->"peer key"
     private SortedSet<string> _changedPeerKeys;
     private SortedSet<string> _deletedVisitIds;
-    //private object _peerDataLock;
 
     private OutgoingAudioAPIData _userData;
     private OutgoingAudioAPIData _lastUserData;
@@ -172,7 +171,6 @@ public class HiFiSession : MonoBehaviour {
     private bool _peersHaveDisconnected = false;
 
     private void Awake() {
-        Debug.Log("HiFiSession.Awake");
         if (RaviSession == null) {
             CreateRaviSession();
         }
@@ -184,11 +182,13 @@ public class HiFiSession : MonoBehaviour {
         _peerKeyMap = new Dictionary<string, string>();
         _changedPeerKeys = new SortedSet<string>();
         _deletedVisitIds = new SortedSet<string>();
-        //_peerDataLock = new object();
+
+        // By default disable most logging.
+        // This can be overrdden for debuggin by external code after this hard-coded setting.
+        LogUtil.GlobalMaxLogLevel = LogUtil.LogLevel.UncommonEvent;
     }
 
     private void Start() {
-        Debug.Log("HiFiSession.Start");
     }
 
     private void Update() {
@@ -236,7 +236,8 @@ public class HiFiSession : MonoBehaviour {
     private void DumpPeerData() { // debug
         lock (_peerDataMap) {
             foreach (KeyValuePair<string, IncomingAudioAPIData> kvp in _peerDataMap) {
-                Debug.Log($"HiFiSession.DumpPeerData key={kvp.Key} value={kvp.Value.ToWireFormattedJsonString()}");
+                LogUtil.LogDebug(this, "DumpPeerData key={0} value={1}",
+                    kvp.Key, kvp.Value.ToWireFormattedJsonString());
             }
         }
     }
@@ -245,7 +246,8 @@ public class HiFiSession : MonoBehaviour {
     }
 
     public void Connect() {
-        Debug.Log("HiFiSession.Connect");
+        Debug.Log($"adebug GlobalMaxLogLevel={LogUtil.GlobalMaxLogLevel}");
+        LogUtil.LogUncommonEvent(this, "Connect");
         SanityCheckSignalingServiceUrl();
         // The HiFi SignalingServiceUrl expects the JWT token on the end
         string signalUrl = SignalingServiceUrl + "?token=" + JWT;
@@ -267,7 +269,7 @@ public class HiFiSession : MonoBehaviour {
     }
 
     private void CreateRaviSession() {
-        Debug.Log("HiFiSession.CreateRaviSession");
+        LogUtil.LogUncommonEvent(this, "CreateRaviSession");
         RaviSession = gameObject.AddComponent<Ravi.RaviSession>() as Ravi.RaviSession;
     }
 
@@ -285,13 +287,13 @@ public class HiFiSession : MonoBehaviour {
             }
         }
         if (originalUrl != SignalingServiceUrl) {
-            Debug.Log($"HiFiSession.SanityCheckSignalingServiceUrl '{originalUrl}' --> '{SignalingServiceUrl}'");
+            LogUtil.LogUncommonEvent(this, "SanityCheckSignalingServiceUrl '{0}'-->'{1}'", originalUrl, SignalingServiceUrl);
         }
     }
 
     private void UpdateState(AudionetConnectionState newState) {
         if (_connectionState != newState) {
-            Debug.Log($"HiFiSession.UpdateState: '{_connectionState}' --> '{newState}'");
+            LogUtil.LogUncommonEvent(this, "UpdateState: '{0}'-->'{1}'", _connectionState, newState);
             _connectionState = newState;
             // fire the event later when we're on main thread
             _stateHasChanged = true;
@@ -299,7 +301,7 @@ public class HiFiSession : MonoBehaviour {
     }
 
     private bool SendAudionetInit() {
-        Debug.Log("HiFiSession.SendAudionetInit");
+        LogUtil.LogDebug(this, "SendAudionetInit");
         if (RaviSession != null && RaviSession.CommandController != null) {
             if (_connectionState == AudionetConnectionState.Failed) {
                 UpdateState(AudionetConnectionState.Disconnected);
@@ -313,7 +315,7 @@ public class HiFiSession : MonoBehaviour {
             if (_connectionState == AudionetConnectionState.Disconnected) {
                 UpdateState(AudionetConnectionState.Connecting);
             }
-            Debug.Log("HiFiSession SEND audionet.init");
+            LogUtil.LogUncommonEvent(this, "SEND audionet.init");
             //bool success = RaviSession.CommandController.SendCommand("audionet.init", payload.ToString());
             bool success = RaviSession.CommandController.SendCommand("audionet.init", payload);
             if (!success) {
@@ -344,15 +346,15 @@ public class HiFiSession : MonoBehaviour {
                 _mixerInfo.visitId = RaviSession.SessionId;
                 UpdateState(AudionetConnectionState.Connected);
             } else {
-                Debug.Log($"HiFiSession.HandleAudionetInit RECV audionet.init response with unexpected connectionState='{_connectionState}'");
+                LogUtil.LogWarning(this, "HandleAudionetInit RECV audionet.init response with unexpected connectionState='{0}'", _connectionState);
             }
         } catch (Exception e) {
-            Debug.Log($"HiFiSession.HandleAudionetInit failed to parse message='{msg}' err='{e.Message}'");
+            LogUtil.LogError(this, "HandleAudionetInit failed to parse message='{0}' err='{1}'", msg, e.Message);
         }
     }
 
     private void HandleAudionetBinaryData(byte[] data) {
-        //Debug.Log($"HiFiSession.HandleAudionetBinaryData data.Length={data.Length}");
+        LogUtil.LogDebug(this, "HandleAudionetBinaryData data.Length={0}", data.Length);
         // 'data' may be gzipped so we first try to decompress it
         const int MAX_UNCOMPRESSED_BUFFER_SIZE = 1024;
         byte[] uncompressedData = new byte[MAX_UNCOMPRESSED_BUFFER_SIZE];
@@ -360,16 +362,14 @@ public class HiFiSession : MonoBehaviour {
             using(MemoryStream zipped = new MemoryStream(data)) {
                 using(GZipStream unzipper = new GZipStream(zipped, CompressionMode.Decompress)) {
                     int numBytes = unzipper.Read(uncompressedData, 0, uncompressedData.Length);
-                    //Debug.Log($"HiFiSession.HandleAudionetBinaryData numBytesUncompressed={numBytes}");
                     string uncompressedText = System.Text.Encoding.UTF8.GetString(uncompressedData, 0,  numBytes);
-                    Debug.Log($"HiFiSession.HandleAudionetBinaryData uncompressedText='{uncompressedText}'");
+                    LogUtil.LogDebug(this, "HandleAudionetBinaryData uncompressedText='{0}'", uncompressedText);
                 }
             }
         } catch (Exception) {
             // decompression failed
             uncompressedData = data;
         }
-        //Debug.Log($"HiFiSession.HandleAudionetBinaryData uncompressedData.Length={uncompressedData.Length}");
 
         string text = System.Text.Encoding.UTF8.GetString(uncompressedData);
         lock (_peerDataMap) {
@@ -421,19 +421,14 @@ public class HiFiSession : MonoBehaviour {
                     }
                     _peersHaveDisconnected = true;
                 }
-                //Debug.Log($"HiFiSession.HandleAudionetBinaryData deleted_visit_ids.Length={obj.deleted_visit_ids.Length} peers.Length={sessionData.peers.Length}");
             } catch (Exception e) {
-                Debug.Log($"HiFiSession.HandleAudionetBinaryData failed to parse RaviSessionBinaryData err='{e.Message}'");
+                LogUtil.LogError(this, "HandleAudionetBinaryData failed to parse RaviSessionBinaryData err='{0}'", e.Message);
             }
         }
     }
 
-    private void TransmitHiFiAudioAPIData(HiFi.OutgoingAudioAPIData newData, HiFi.OutgoingAudioAPIData oldData) {
-        Debug.Log("RaviSession.TransmitHiFiAudioAPIData TODO: implement this");
-    }
-
     public void OnRaviSessionStateChanged(Ravi.RaviSession.SessionState state) {
-        Debug.Log($"HiFiSession.OnRaviSessionStateChanged state='{state}'");
+        LogUtil.LogUncommonEvent(this, "OnRaviSessionStateChanged state='{0}'", state);
         if (state == Ravi.RaviSession.SessionState.Connected) {
             SendAudionetInit();
         }

@@ -19,20 +19,6 @@ namespace Ravi {
 /// </summary>
 [AddComponentMenu("Ravi Signaler for MixedReality-WebRTC")]
 public class RaviSignaler : Signaler {
-    public enum Verbosity {
-        Silent = 0,
-        Errors,
-        SingleEvents,
-        Messages,
-        PerFrameEvents
-    }
-
-    /// <summary>
-    /// Automatically log all errors to the Unity console.
-    /// </summary>
-    [Tooltip("LogVerbosity: 0=silent ... 3=flood")]
-    public Verbosity LogVerbosity = 0;
-
     /// <summary>
     /// Unique identifier of the local peer.
     /// </summary>
@@ -223,19 +209,10 @@ public class RaviSignaler : Signaler {
     #endregion
 
     /// <summary>
-    /// Log helper
-    /// </summary>
-    private void LogMessage(Verbosity level, string message) {
-        if (LogVerbosity >= level && level > Verbosity.Silent) {
-            Debug.Log($"RaviSignaler {message}");
-        }
-    }
-
-    /// <summary>
     /// Try to open a signal connection at the next convenience.
     /// </summary>
     public void Connect(string webSocketUrl = "") {
-        LogMessage(Verbosity.SingleEvents, $"Connect url='{webSocketUrl}' state={_state}");
+        HiFi.LogUtil.LogUncommonEvent(this, "Connect url='{0}' state={1}", webSocketUrl, _state);
         _connectLater = true;
         if (_state == SignalState.New
             || _state == SignalState.Closed
@@ -269,22 +246,22 @@ public class RaviSignaler : Signaler {
 
     private void UpdateSignalState(SignalState newState) {
         if (_state != newState) {
-            LogMessage(Verbosity.SingleEvents, $"RaviSignalState: {_state}-->{newState}");
+            HiFi.LogUtil.LogUncommonEvent(this, "UpdateSignalState {0}-->{1}", _state, newState);
             _state = newState;
             SignalStateChangedEvent?.Invoke(_state);
         }
     }
 
     private IEnumerator OpenWebSocket() {
-        LogMessage(Verbosity.SingleEvents, $"OpenWebSocket url='{WebSocketUrl}'");
+        HiFi.LogUtil.LogUncommonEvent(this, "OpenWebSocket url='{0}'", WebSocketUrl);
         if (_webSocket != null && _webSocket.State != WebSocketState.Closed) {
-            LogMessage(Verbosity.Errors, $"Failed to open existing websocket state={_webSocket.State}");
+            HiFi.LogUtil.LogError(this, "OpenWebSocket failed to open existing websocket with state={1}", _webSocket.State);
             yield break;
         }
         try {
             _webSocket = new WebSocket(WebSocketUrl);
         } catch (Exception e) {
-            LogMessage(Verbosity.Errors, $"Failed to open WebSocketUrl='{WebSocketUrl}' err='{e.Message}'");
+            HiFi.LogUtil.LogError(this, "OpenWebSocket failed to open WebSocketUrl='{0}' err='{1}'", WebSocketUrl, e.Message);
             if (_webSocket != null) {
                 _webSocket.Close();
                 _webSocket = null;
@@ -294,19 +271,19 @@ public class RaviSignaler : Signaler {
         }
 
         _webSocket.OnOpen += () => {
-            LogMessage(Verbosity.SingleEvents, "webSocket OnOpen");
+            HiFi.LogUtil.LogUncommonEvent(this, "webSocket OnOpen");
             UpdateSignalState(SignalState.Open);
             string request = "{\"request\":\"" + LocalPeerId + "\"}";
-            LogMessage(Verbosity.Messages, $"SEND login='{request}'");
+            HiFi.LogUtil.LogUncommonEvent(this, "OpenWebSocket SEND login='{0}'", request);
             _webSocket.SendText(request);
         };
 
         _webSocket.OnError += (string errorMessage) => {
-            LogMessage(Verbosity.Errors, $"webSocket OnError() err='{errorMessage}'");
+            HiFi.LogUtil.LogError(this, "OpenWebSocket webSocket OnError() err='{0}'", errorMessage);
         };
 
         _webSocket.OnClose += (closeCode) => {
-            LogMessage(Verbosity.SingleEvents, $"webSocket OnClosed! closeCode={closeCode}");
+            HiFi.LogUtil.LogUncommonEvent(this, "OpenWebSocket webSocket OnClosed! closeCode={0}", closeCode);
             UpdateSignalState(SignalState.Closed);
         };
 
@@ -318,7 +295,7 @@ public class RaviSignaler : Signaler {
         while (_nativePeer == null) {
             yield return true;
         }
-        LogMessage(Verbosity.SingleEvents, $"nativePeer initialized");
+        HiFi.LogUtil.LogDebug(this, "OpenWebSocket nativePeer initialized");
 
         // We Connect _webSocket in a Task (which runs in a thread pool)
         // and do not wait for it to complete here.
@@ -328,34 +305,34 @@ public class RaviSignaler : Signaler {
     }
 
     protected override void OnEnable() {
-        LogMessage(Verbosity.SingleEvents, "OnEnable");
+        HiFi.LogUtil.LogUncommonEvent(this, "OnEnable");
         base.OnEnable();
     }
 
     protected override void OnDisable() {
-        LogMessage(Verbosity.SingleEvents, "OnDisable");
+        HiFi.LogUtil.LogUncommonEvent(this, "OnDisable");
         base.OnDisable();
     }
 
     protected override void OnSdpOfferReadyToSend(SdpMessage offer) {
-        LogMessage(Verbosity.SingleEvents, "OnSdpOfferReadyToSend");
+        HiFi.LogUtil.LogDebug(this, "OnSdpOfferReadyToSend");
         base.OnSdpOfferReadyToSend(offer);
     }
 
     protected override void OnSdpAnswerReadyToSend(SdpMessage answer) {
-        LogMessage(Verbosity.SingleEvents, "OnSdpAnswerReadyToSend");
+        HiFi.LogUtil.LogDebug(this, "OnSdpAnswerReadyToSend");
         base.OnSdpAnswerReadyToSend(answer);
     }
 
     private Task SendMessageImplAsync(RaviSignalMessage message) {
         string text = message.ToRaviSignalText(LocalPeerId);
-        LogMessage(Verbosity.Messages, $"SEND signal='{text}'");
+        HiFi.LogUtil.LogCommonEvent(this, "SEND signal='{0}'", text);
         return _webSocket.SendText(text);
     }
 
     void HandleMessage(byte[] msg) {
         string signalText = System.Text.Encoding.UTF8.GetString(msg);
-        LogMessage(Verbosity.Messages, $"RECV signal='{signalText}'");
+        HiFi.LogUtil.LogCommonEvent(this, "RECV signal='{0}'", signalText);
         try {
             JSONNode obj = JSON.Parse(signalText);
             JSONNode signal = obj[LocalPeerId];
@@ -364,10 +341,10 @@ public class RaviSignaler : Signaler {
             } else if (signal.HasKey("ice")) {
                 HandleIceSignal(signal["ice"]);
             } else {
-                LogMessage(Verbosity.Errors, $"Unhandled signal='{signalText}'");
+                HiFi.LogUtil.LogWarning(this, "Unhandled signal='{0}'", signalText);
             }
         } catch (Exception e) {
-            LogMessage(Verbosity.Errors, "Failed to parse websocket message err='" + e.Message + "'");
+            HiFi.LogUtil.LogError(this, "HandleMessage failed to parse err='{0}'", e.Message);
         }
     }
 
@@ -390,7 +367,7 @@ public class RaviSignaler : Signaler {
                 _ = PeerConnection.HandleConnectionMessageAsync(sdpAnswer);
             }
         } catch (Exception e) {
-            LogMessage(Verbosity.Errors, $"Failed to HandleSdpSignal msg='{signalObj.ToString()}' err='{e.Message}'");
+            HiFi.LogUtil.LogError(this, "HandleSdpSignal failed msg='{0}' err='{1}'", signalObj.ToString(), e.Message);
         }
     }
 
@@ -413,7 +390,7 @@ public class RaviSignaler : Signaler {
             };
             _nativePeer.AddIceCandidate(ice);
         } catch (Exception e) {
-            LogMessage(Verbosity.Errors, $"Failed to HandleIceSignal msg='{signal.ToString()}' err='{e.Message}'");
+            HiFi.LogUtil.LogError(this, "HandleIceSignal failed msg='{0}' err='{1}'", signal.ToString(), e.Message);
         }
     }
 
@@ -440,13 +417,13 @@ public class RaviSignaler : Signaler {
                     try {
                         Guid id = Guid.Parse(LocalPeerId);
                     } catch (FormatException) {
-                        LogMessage(Verbosity.Errors, $"RaviSignaler cowardly refusing to use LocalPeerId='{LocalPeerId}'");
+                        HiFi.LogUtil.LogError(this, "cowardly refusing to use LocalPeerId='{0}'", LocalPeerId);
                         // create a fresh uuid
                         LocalPeerId = Guid.NewGuid().ToString();
                     }
                 }
 
-                LogMessage(Verbosity.SingleEvents, $"StartConnection LocalPeerId={LocalPeerId}");
+                HiFi.LogUtil.LogUncommonEvent(this, "StartConnection LocalPeerId={0}", LocalPeerId);
                 UpdateSignalState(SignalState.Connecting);
                 StartCoroutine(OpenWebSocket());
             }
@@ -461,7 +438,7 @@ public class RaviSignaler : Signaler {
             && _webSocket.State != WebSocketState.Closing
             && _webSocket.State != WebSocketState.Closed)
         {
-            LogMessage(Verbosity.SingleEvents, "DisconnectWebsocket");
+            HiFi.LogUtil.LogUncommonEvent(this, "DisconnectWebsocket");
             if (_state != SignalState.Closed && _state != SignalState.Failed) {
                 UpdateSignalState(SignalState.Closing);
             }
