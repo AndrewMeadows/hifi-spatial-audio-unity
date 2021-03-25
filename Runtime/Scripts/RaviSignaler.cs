@@ -105,13 +105,6 @@ public class RaviSignaler : Signaler {
                 MessageType = Type.Offer;
             } else if (message.Type == SdpMessageType.Answer) {
                 MessageType = Type.Answer;
-                // munge the SDP message: requesst 128kbps stereo
-                const string replacement = "a=fmtp:111 maxaveragebitrate=128000;sprop-stereo=1;stereo=1;";
-                const string pattern = "a=fmtp:111 ";
-                Match m = Regex.Match(Data, replacement);
-                if (!m.Success) {
-                    Data = Regex.Replace(Data, pattern, replacement);
-                }
             } else {
                 MessageType = Type.Unknown;
             }

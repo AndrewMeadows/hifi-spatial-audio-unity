@@ -78,6 +78,11 @@ public class RaviSession : MonoBehaviour {
     private SessionState _sessionState = SessionState.New;
     private Microsoft.MixedReality.WebRTC.PeerConnection _realPeerConnection;
 
+    private bool _audioSourceChanged = false;
+    private bool _audioPlaying = false;
+    private uint _audioChannelCount = 0;
+    private uint _audioSampleRate = 0;
+
     public void Awake() {
         // Connect to PeerConnection and Signaler
         //
@@ -158,6 +163,10 @@ public class RaviSession : MonoBehaviour {
             _sessionStateChanged = false;
             SessionStateChangedEvent?.Invoke(_sessionState);
         }
+        if (_audioSourceChanged) {
+            HiFi.LogUtil.LogUncommonEvent(this, "AudioSourceChanged channelCount={0} sampleRate={1}", _audioChannelCount, _audioSampleRate);
+            _audioSourceChanged = false;
+        }
     }
 
     public void Open(string signalUrl) {
@@ -228,6 +237,10 @@ public class RaviSession : MonoBehaviour {
         // Microsoft.MixedReality.WebRTC.PeerConnection
         _realPeerConnection = PeerConnection.Peer;
 
+        _realPeerConnection.PreferredAudioCodec = "opus";
+        _realPeerConnection.PreferredAudioCodecExtraParamsRemote = "maxaveragebitrate=128000;sprop-stereo=1;stereo=1";
+        _realPeerConnection.PreferredAudioCodecExtraParamsLocal = "maxaveragebitrate=64000";
+
         // yay! we have a _realPeerConnection
         HiFi.LogUtil.LogUncommonEvent(this, "OnPeerConnectionInitialized");
 
@@ -270,10 +283,23 @@ public class RaviSession : MonoBehaviour {
     void OnAudioTrackAdded(RemoteAudioTrack u) {
         HiFi.LogUtil.LogUncommonEvent(this, "OnAudioTrackAdded Name='{0}' enabled={1} isOutputTofDevice={2}",
             u.Name, u.Enabled, u.IsOutputToDevice());
+        u.AudioFrameReady += HandleRemoteAudioFrame;
     }
 
     void OnAudioTrackRemoved(Transceiver t, RemoteAudioTrack u) {
         HiFi.LogUtil.LogUncommonEvent(this, "OnAudioTrackRemoved Name='{0}'", u.Name);
+        u.AudioFrameReady -= HandleRemoteAudioFrame;
+    }
+
+    private void HandleRemoteAudioFrame(AudioFrame frame) {
+        uint channelCount = frame.channelCount;
+        uint sampleRate = frame.sampleRate;
+        if (!_audioPlaying || channelCount != _audioChannelCount || sampleRate != _audioSampleRate) {
+            _audioPlaying = true;
+            _audioChannelCount = channelCount;
+            _audioSampleRate = sampleRate;
+            _audioSourceChanged = true;
+        }
     }
 
     void OnDataChannelAdded(DataChannel c) {
