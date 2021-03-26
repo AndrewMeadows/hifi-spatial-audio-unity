@@ -78,10 +78,11 @@ public class RaviSession : MonoBehaviour {
     private SessionState _sessionState = SessionState.New;
     private Microsoft.MixedReality.WebRTC.PeerConnection _realPeerConnection;
 
-    private bool _audioSourceChanged = false;
+    private bool _remoteAudioTrackChanged = false;
     private bool _audioPlaying = false;
     private uint _audioChannelCount = 0;
     private uint _audioSampleRate = 0;
+    private int _numAudioSourceComponents = 0;
 
     public void Awake() {
         // Connect to PeerConnection and Signaler
@@ -124,28 +125,29 @@ public class RaviSession : MonoBehaviour {
         PeerConnection.OnInitialized.AddListener(OnPeerConnectionInitialized);
         PeerConnection.OnShutdown.AddListener(OnPeerConnectionShutdown);
 
-
+        // creae some necessary components
         MicrophoneSource micSource = gameObject.AddComponent<MicrophoneSource>() as MicrophoneSource;
         AudioReceiver audioReceiver = gameObject.AddComponent<AudioReceiver>() as AudioReceiver;
         MediaLine audioLine = PeerConnection.AddMediaLine(Microsoft.MixedReality.WebRTC.MediaKind.Audio);
 
-        // connect  the audio pipes
         // Specifying the source and receiver of the audioLine is important to do
         // before _realPeerConnection is created because their existence determines
         // the direction of the Transceiver (e.g. "SendReceive")
         audioLine.Source = micSource;
         audioLine.Receiver = audioReceiver;
 
-        /*
-        // Note: the AudioRenderer is optional. It is for Unity Editor UI/debugging.
-        // If created then it will also make an AudioSource component on gameObject
-        // and it will be possible to see the volume levels of the left and right
-        // signals in the Unity Editor UI.
+        // Note: the AudioRenderer is for debugging under Unity Editor and is optional.
+        // If created: it will be possible to see the volume levels of the left
+        // and right signals in the Unity Editor UI.  However, it has a side-effect:
+        // it will add an AudioSource component to gameObject if one does not already
+        // exist.
         Microsoft.MixedReality.WebRTC.Unity.AudioRenderer audioRenderer =
             gameObject.AddComponent<Microsoft.MixedReality.WebRTC.Unity.AudioRenderer>()
             as Microsoft.MixedReality.WebRTC.Unity.AudioRenderer;
         audioReceiver.AudioStreamStarted.AddListener(audioRenderer.StartRendering);
-        */
+
+        // measure _numAudioSourceComponents and save for later
+        _numAudioSourceComponents = gameObject.GetComponents<AudioSource>().Length;
     }
 
     private void CreateSignaler() {
@@ -163,9 +165,9 @@ public class RaviSession : MonoBehaviour {
             _sessionStateChanged = false;
             SessionStateChangedEvent?.Invoke(_sessionState);
         }
-        if (_audioSourceChanged) {
+        if (_remoteAudioTrackChanged) {
             HiFi.LogUtil.LogUncommonEvent(this, "AudioSourceChanged channelCount={0} sampleRate={1}", _audioChannelCount, _audioSampleRate);
-            _audioSourceChanged = false;
+            _remoteAudioTrackChanged = false;
         }
     }
 
@@ -284,8 +286,10 @@ public class RaviSession : MonoBehaviour {
         HiFi.LogUtil.LogUncommonEvent(this, "OnRemoteAudioTrackAdded Name='{0}' enabled={1} isOutputToDevice={2}",
             u.Name, u.Enabled, u.IsOutputToDevice());
         u.AudioFrameReady += HandleRemoteAudioFrame;
-        // Don't bother with going through Unity AudioSource. Instead write directly to device.
-        u.OutputToDevice(true);
+        if (_numAudioSourceComponents == 0) {
+            // When no AudioSource exists on gameObject we can write directly to audio device
+            u.OutputToDevice(true);
+        }
     }
 
     void OnAudioTrackRemoved(Transceiver t, RemoteAudioTrack u) {
@@ -300,7 +304,7 @@ public class RaviSession : MonoBehaviour {
             _audioPlaying = true;
             _audioChannelCount = channelCount;
             _audioSampleRate = sampleRate;
-            _audioSourceChanged = true;
+            _remoteAudioTrackChanged = true;
         }
     }
 
