@@ -124,28 +124,28 @@ public class RaviSession : MonoBehaviour {
         PeerConnection.OnInitialized.AddListener(OnPeerConnectionInitialized);
         PeerConnection.OnShutdown.AddListener(OnPeerConnectionShutdown);
 
-        // create an audioSource on gameObject if none exist yet
-        AudioSource audioSource = gameObject.GetComponent<AudioSource>();
-        if (audioSource == null) {
-            audioSource = gameObject.AddComponent<AudioSource>() as AudioSource;
-        }
-        audioSource.panStereo = 0.0f;
-        audioSource.spatialBlend = 0.0f;
 
         MicrophoneSource micSource = gameObject.AddComponent<MicrophoneSource>() as MicrophoneSource;
         AudioReceiver audioReceiver = gameObject.AddComponent<AudioReceiver>() as AudioReceiver;
-        Microsoft.MixedReality.WebRTC.Unity.AudioRenderer audioRenderer =
-            gameObject.AddComponent<Microsoft.MixedReality.WebRTC.Unity.AudioRenderer>()
-            as Microsoft.MixedReality.WebRTC.Unity.AudioRenderer;
         MediaLine audioLine = PeerConnection.AddMediaLine(Microsoft.MixedReality.WebRTC.MediaKind.Audio);
 
         // connect  the audio pipes
+        // Specifying the source and receiver of the audioLine is important to do
+        // before _realPeerConnection is created because their existence determines
+        // the direction of the Transceiver (e.g. "SendReceive")
         audioLine.Source = micSource;
         audioLine.Receiver = audioReceiver;
+
+        /*
+        // Note: the AudioRenderer is optional. It is for Unity Editor UI/debugging.
+        // If created then it will also make an AudioSource component on gameObject
+        // and it will be possible to see the volume levels of the left and right
+        // signals in the Unity Editor UI.
+        Microsoft.MixedReality.WebRTC.Unity.AudioRenderer audioRenderer =
+            gameObject.AddComponent<Microsoft.MixedReality.WebRTC.Unity.AudioRenderer>()
+            as Microsoft.MixedReality.WebRTC.Unity.AudioRenderer;
         audioReceiver.AudioStreamStarted.AddListener(audioRenderer.StartRendering);
-        // Note: the AudioRenderer will automatically find audioSource on gameObject
-        // and will play through that.  Also, we don't bother creating an AudioListener
-        // component -- we assume one exists.
+        */
     }
 
     private void CreateSignaler() {
@@ -255,7 +255,7 @@ public class RaviSession : MonoBehaviour {
         // void DataChannelAdded(DataChannel c)
         // void DataChannelRemoved(Datachannel c)
         _realPeerConnection.TransceiverAdded += this.OnTransceiverAdded;
-        _realPeerConnection.AudioTrackAdded += this.OnAudioTrackAdded;
+        _realPeerConnection.AudioTrackAdded += this.OnRemoteAudioTrackAdded;
         _realPeerConnection.AudioTrackRemoved += this.OnAudioTrackRemoved;
         _realPeerConnection.DataChannelAdded += this.OnDataChannelAdded;
         _realPeerConnection.DataChannelRemoved += this.OnDataChannelRemoved;
@@ -280,10 +280,12 @@ public class RaviSession : MonoBehaviour {
         }
     }
 
-    void OnAudioTrackAdded(RemoteAudioTrack u) {
-        HiFi.LogUtil.LogUncommonEvent(this, "OnAudioTrackAdded Name='{0}' enabled={1} isOutputTofDevice={2}",
+    void OnRemoteAudioTrackAdded(RemoteAudioTrack u) {
+        HiFi.LogUtil.LogUncommonEvent(this, "OnRemoteAudioTrackAdded Name='{0}' enabled={1} isOutputToDevice={2}",
             u.Name, u.Enabled, u.IsOutputToDevice());
         u.AudioFrameReady += HandleRemoteAudioFrame;
+        // Don't bother with going through Unity AudioSource. Instead write directly to device.
+        u.OutputToDevice(true);
     }
 
     void OnAudioTrackRemoved(Transceiver t, RemoteAudioTrack u) {

@@ -8,15 +8,13 @@ using Microsoft.MixedReality.WebRTC.Unity;
 public class TestHiFiSession : MonoBehaviour {
 
     // non-WebRTC objects
-    //public AudioListener _audioListener;
-    public AudioSource _audioSource;
     public HiFi.HiFiSession _hifiSession;
 
     Vector3 _position;
     const float OSCILLATION_PERIOD = 20.0f;
     float _omega = 2.0f * (float)(Math.PI) / OSCILLATION_PERIOD;
     float _phase = 0.0f; // phase offset at t=0
-    float _amplitude = 2.0f;
+    float _amplitude = 1.0f;
     float _updateExpiry = 0.0f;
     float _updatePeriod = 1.0f / 20.0f;
     System.Diagnostics.Stopwatch _clock;
@@ -24,7 +22,6 @@ public class TestHiFiSession : MonoBehaviour {
     void Awake() {
         Debug.Log("TestHiFiSession:Awake()");
 
-        _audioSource = gameObject.AddComponent<AudioSource>() as AudioSource;
         _hifiSession = gameObject.AddComponent<HiFi.HiFiSession>() as HiFi.HiFiSession;
         _hifiSession.ConnectionStateChangedEvent += OnSessionStateChanged;
 
@@ -61,8 +58,7 @@ public class TestHiFiSession : MonoBehaviour {
         float theta = _omega * time + _phase;
         _position.x = _amplitude * (float)(Math.Sin(theta));
         _position.y = 0.0f;
-        //_position.z = _amplitude * (float)(Math.Cos(theta));
-        _position.z = 0.0f;
+        _position.z = _amplitude * (float)(Math.Cos(theta));
     }
 
     void OnSessionStateChanged(HiFi.HiFiSession.AudionetConnectionState state) {

@@ -185,8 +185,10 @@ public class HiFiSession : MonoBehaviour {
 
         // By default disable most logging.
         // This can be overrdden for debuggin by external code after this hard-coded setting.
+        // Pick one of the lines below:
         LogUtil.GlobalMaxLogLevel = LogUtil.LogLevel.UncommonEvent;
         //LogUtil.GlobalMaxLogLevel = LogUtil.LogLevel.Debug;
+        //LogUtil.GlobalMaxLogLevel = LogUtil.LogLevel.Silent;
     }
 
     private void Start() {
