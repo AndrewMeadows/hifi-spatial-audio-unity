@@ -1,28 +1,30 @@
-# hifi-spatial-audio-unity
+# HiFi Spatialized Audio for Unity
 
-## How to make unity demo
+<img src="https://img.shields.io/badge/unity-2019.4-green.svg?style=flat-square" alt="unity 2019.4">
 
-1. Open Unity-hub
-2. Create fresh 2D-template Unity project with Unity-2019.4 LTS
-3. In Project tab create these folders:
-    * Assets
-    * Plugins
-4. Add **NativeWebSocket** plugin
-    1. Open Unity Window-->Package_Manager
-    2. Click "+" button (upper left) --> Add_package_from_git_URL...
-    3. enter: https://github.com/endel/NativeWebSocket.git#upm
-5. Add **SimpleJSON** plugin
-    1. Download from here: https://raw.githubusercontent.com/Bunny83/SimpleJSON/master/SimpleJSON.cs
-    2. Copy SimpleJSON.cs into your Project/Plugins directory
-6. Add **Microsoft-MixedReality-Webrtc** plugin
-    1. Download the latest tarball from https://github.com/microsoft/MixedReality-WebRTC/tags
-    2. Open Unity Window-->Package_Manager
-    3. Click "+" button (upper left) --> Add_package_from_tarball...
-    4. Select downloaded tarball
-7. The **hifi-spatial-audio-unity** project is not yet bundled into a clean plugin and must be installed manually:
-    1. Clone this repo to local disk
-    2. Copy all `Plugins/*.cs` files to your `Project/Plugins/` directory
-    3. Copy all `Scrips/*.cs` files to your `Project/Scripts/` directory
-8. Drag `Project/Scripts/TestHiFiSession.cs` onto the **Camera** GameObject
-9. Edit `TestHiFiSession.cs` to connect to your test **HiFi-audio-mixer** URL and custom **JWT**
-10. Run demo
+This package provides access to [HiFi Spatialized Audio](https://www.highfidelity.com/api) in Unity.
+ATM It is only available for Unity 2019.4.xxx because it depends on the com.unity.webrtc plugin.
+
+## Installation
+
+Please see [Install package](INSTALL.md).
+
+## Usage overview:
+1. Create an account: https://account.highfidelity.com/dev/account
+1. Create a HiFi "App" for whatever project you're workining on.
+1. Create a "Space" inside the App where users can meet.
+1. For each User that will be connecting to the Space: create a Java Web Token (JWT).  The JWT is a compressed binary blob with info about the App Space and the User's publicly visible name (optional User ID).
+1. In the Unity game:
+    1. Create a HiFiCommunicator.
+    1. Set the `HiFiCommunicator.SignalingServiceUrl`
+    1. Set the `HiFiCommunicator.JWT`
+    1. Call `HiFiCommunicator.ConnectToHiFiAudioAPIServer();`
+    1. Every frame set `HiFiCommunicator.UserData.Position` and `.Orientation`
+
+## Licenses
+
+- [LICENSE.md](LICENSE.md)
+- [Third Party Notices.md](Third_Party_Notices.md)
+
+## Contribution
+- [CONTRIBUTING.md](CONTRIBUTING.md)

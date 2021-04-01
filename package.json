@@ -1,0 +1,18 @@
+{
+  "name": "com.highfidelity.spatialized-audio",
+  "displayName": "HiFi Spatialized Audio",
+  "version": "0.1.0",
+  "unity": "2019.4",
+  "description": "Spatialized audio over WebRTC",
+  "keywords": [
+    "audio",
+    "hifi",
+    "spatialized-audio",
+    "webrtc"
+  ],
+  "dependencies": {
+    "com.endel.nativewebsocket": "1.1.1",
+    "com.unity.webrtc": "2.4.0-hifi.1"
+  }
+}
+

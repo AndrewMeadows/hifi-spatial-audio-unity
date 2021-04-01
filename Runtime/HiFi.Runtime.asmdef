@@ -1,0 +1,22 @@
+{
+    "name": "HiFi",
+    "references": [
+        "GUID:f12aafacab75a87499e7e45c873ffab8",
+        "GUID:04376767bc1f3b428aefa3d20743e819"
+    ],
+    "includePlatforms": [
+        "Editor",
+        "iOS",
+        "LinuxStandalone64",
+        "macOSStandalone",
+        "WindowsStandalone64"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
