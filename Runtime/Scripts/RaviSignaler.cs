@@ -30,9 +30,10 @@ public class RaviSignaler : MonoBehaviour {
     public string LocalPeerId; // Uuid string in 4211 format
     public SignalState State { get; internal set; }
     public RTCPeerConnection PeerConnection;
-    public event SignalStateChangeDelegate SignalStateChanged; // DANGER: not necessarily fired on main thread!
+    public event SignalStateChangeDelegate SignalStateChangedEvent; // DANGER: not necessarily fired on main thread!
 
     private WebSocket _webSocket;
+    private bool _disposeOnDestroy = false;
 
     private RTCAnswerOptions _answerOptions = new RTCAnswerOptions {
         iceRestart = false,
@@ -44,7 +45,7 @@ public class RaviSignaler : MonoBehaviour {
 
     void Awake() {
         Debug.Log("RaviSignaler.Awake");
-        WebRTC.Initialize(EncoderType.Software);
+        _disposeOnDestroy = RaviUtil.InitializeWebRTC();
         if (!RaviMainThreadDispatcher.Exists()) {
             RaviMainThreadDispatcher dispatcher = gameObject.AddComponent<RaviMainThreadDispatcher>() as RaviMainThreadDispatcher;
         }
@@ -70,12 +71,15 @@ public class RaviSignaler : MonoBehaviour {
         if (newState != State) {
             Debug.Log($"RaviSignaler.UpdateState {State}-->{newState}");
             State = newState;
-            this.SignalStateChanged?.Invoke(newState);
+            this.SignalStateChangedEvent?.Invoke(newState);
         }
     }
 
     void OnDestroy() {
-        WebRTC.Dispose();
+        if (_disposeOnDestroy) {
+            RaviUtil.DisposeWebRTC();
+            _disposeOnDestroy = false;
+        }
     }
 
     void SendSignal(string text) {
@@ -83,18 +87,8 @@ public class RaviSignaler : MonoBehaviour {
         _webSocket.SendText(text);
     }
 
-    void InitializePeerConnection() {
-        if (PeerConnection == null) {
-            // we were not given a PeerConnection from external logic
-            // so we create our own and external logic must reference it
-            RTCConfiguration config = default;
-            config.iceServers = new RTCIceServer[] {
-                new RTCIceServer { urls = new string[] { "stun:stun.l.google.com:19302" } }
-            };
-            Debug.Log("RaviSignaler.Connect create PeerConnection...");
-            PeerConnection = new RTCPeerConnection(ref config);
-        }
-
+    void LatchOntoPeerConnection() {
+        Debug.Log("RaviSignaler.LatchOntoPeerConnection");
         // these are the public delegates available for RTCPeerConnection:
         //
         // void DelegateOnIceCandidate(RTCIceCandidate candidate);
@@ -110,10 +104,6 @@ public class RaviSignaler : MonoBehaviour {
         PeerConnection.OnIceGatheringStateChange = HandleIceGatheringStateChange;
         PeerConnection.OnIceCandidate = HandleIceCandidate;
         PeerConnection.OnNegotiationNeeded = OnNegotiationNeeded;
-
-        // TODO: remove these callbacks when RaviSession is working
-        PeerConnection.OnDataChannel = OnDataChannel;
-        PeerConnection.OnTrack = OnTrack;
     }
 
     public bool Connect(string url) {
@@ -127,10 +117,21 @@ public class RaviSignaler : MonoBehaviour {
             bool success = OpenWebSocket();
             if (success) {
                 Debug.Log("RaviSignaler.Connect successful OpenWebSocket");
-                //Debug.Log("RaviSignaler.Connect initialize WebRTC...");
-                InitializePeerConnection();
+                if (PeerConnection == null) {
+                    Debug.Log("RaviSignaler.Connect create PeerConnection");
+                    // we were not given a PeerConnection from external logic
+                    // so we create our own and external logic must reference it
+                    RTCConfiguration config = default;
+                    config.iceServers = new RTCIceServer[] {
+                        new RTCIceServer { urls = new string[] { "stun:stun.l.google.com:19302" } }
+                    };
+                    Debug.Log("RaviSignaler.Connect create PeerConnection...");
+                    PeerConnection = new RTCPeerConnection(ref config);
+                }
+                LatchOntoPeerConnection();
             } else {
                 Debug.Log("RaviSignaler.Connect failed to OpenWebSocket");
+                UpdateState(SignalState.Failed);
             }
             return success;
         }
@@ -436,14 +437,6 @@ public class RaviSignaler : MonoBehaviour {
             this._signalingConnection.send(desc);
         }
         */
-    }
-
-    // TODO: remove these callbacks when RaviSession is working
-    void OnDataChannel(RTCDataChannel channel) {
-        Debug.Log("HACK OnDataChannel");
-    }
-    void OnTrack(RTCTrackEvent e) {
-        Debug.Log("HACK OnTrack");
     }
 }
 

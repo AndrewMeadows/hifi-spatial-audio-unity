@@ -5,40 +5,39 @@ using System.Collections.Generic;
 using UnityEngine;
 using Unity.WebRTC;
 
-public class TestRaviSignaler : MonoBehaviour {
+public class TestRaviSession : MonoBehaviour {
 
     //string WebSocketUrl = "ws://192.168.1.143:8701/";
     public string WebSocketUrl = "ws://192.168.1.143:8887/";
-    public Ravi.RaviSignaler _signaler;
+    public Ravi.RaviSession _session;
     bool _updateLogged = false;
 
     void Awake() {
-        Debug.Log("TestRaviSignaler:Awake()");
+        Ravi.Log.UncommonEvent(this, "Awake");
 
-        _signaler = gameObject.AddComponent<Ravi.RaviSignaler>() as Ravi.RaviSignaler;
-        _signaler.SignalStateChangedEvent += OnSignalStateChange;
+        _session = gameObject.AddComponent<Ravi.RaviSession>() as Ravi.RaviSession;
+        _session.SessionStateChangedEvent += OnSessionStateChange;
 
         //_signaler.WebSocketUrl = "ws://192.168.1.143:8701/";
         //_signaler.JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBfaWQiOiI0ZjM0MGZmMS1mOGQ5LTRhOTktOWVkMi05NzdlMmVmOWY2MTgiLCJ1c2VyX2lkIjoibWFpYSIsInNwYWNlX2lkIjoiNTBhNjk3NDQtMzZlZC00YTJmLWJkYjItNmYzYzQ0Y2YxMTg4Iiwic3RhY2siOiJhdWRpb25ldC1taXhlci1hcGktYWxwaGEtMDUifQ.vA1sJZxQ-OTaSNfmURoPckicvPz_N5L2xk0ebxX01Yc";
     }
 
     void Start() {
-        Debug.Log("TestRaviSignaler:Start");
-        //_signaler.Connect(WebSocketUrl);
+        Ravi.Log.UncommonEvent(this, "Start");
     }
 
     void Update() {
         if (!_updateLogged) {
-            Debug.Log("TestRaviSignaler.Update");
+            Ravi.Log.UncommonEvent(this, "Update");
             _updateLogged = true;
         } else {
-            if (_signaler != null && _signaler.State == Ravi.RaviSignaler.SignalState.New) {
-                _signaler.Connect(WebSocketUrl);
+            if (_session != null && _session.State == Ravi.RaviSession.SessionState.New) {
+                _session.Connect(WebSocketUrl);
             }
         }
     }
 
-    void OnSignalStateChange(Ravi.RaviSignaler.SignalState state) {
-        Debug.Log($"TestRaviSignaler.OnSignalStateChange state='{state}'");
+    void OnSessionStateChange(Ravi.RaviSession.SessionState state) {
+        Ravi.Log.UncommonEvent(this, "OnSessionStateChange state='{0}'", state);
     }
 }

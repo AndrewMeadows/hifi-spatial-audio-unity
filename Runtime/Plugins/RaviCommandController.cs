@@ -8,70 +8,41 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using Microsoft.MixedReality.WebRTC.Unity;
+using Unity.WebRTC;
 using UnityEngine;
 
 namespace Ravi {
 
 public class RaviCommandController {
-
-    public Microsoft.MixedReality.WebRTC.DataChannel CommandChannel {
-        set  {
-            if (_commandChannel != null) {
-                _commandChannel.StateChanged -= OnCommandChannelStateChanged;
-                _commandChannel.MessageReceived -= HandleCommandMessage;
-            }
-            _commandChannel = value;
-            if (_commandChannel != null) {
-                _commandChannel.StateChanged += OnCommandChannelStateChanged;
-                _commandChannel.MessageReceived += HandleCommandMessage;
-            }
-        }
-        get { return _commandChannel; }
-    }
-
-    public Microsoft.MixedReality.WebRTC.DataChannel InputChannel {
-        set  {
-            if (_inputChannel != null) {
-                _inputChannel.StateChanged -= OnInputChannelStateChanged;
-                _inputChannel.MessageReceived -= HandleInputMessage;
-            }
-            _inputChannel = value;
-            if (_inputChannel != null) {
-                _inputChannel.StateChanged += OnInputChannelStateChanged;
-                _inputChannel.MessageReceived += HandleInputMessage;
-            }
-        }
-        get { return _inputChannel; }
-    }
-
     // there are two handler types: binary and text
-    public delegate void HandleBinaryMessageDelegate(byte[] msg);
-    public delegate void HandleTextMessageDelegate(string msg);
+    public delegate void BinaryMessageDelegate(byte[] msg);
+    public delegate void TextMessageDelegate(string msg);
 
-    private Dictionary<string, HandleTextMessageDelegate> _commandHandlers;
-    public HandleBinaryMessageDelegate BinaryCommandHandler;
-    public HandleBinaryMessageDelegate BinaryInputHandler;
+    private Dictionary<string, TextMessageDelegate> _commandHandlers;
+    public BinaryMessageDelegate BinaryCommandHandler;
+    public BinaryMessageDelegate BinaryInputHandler;
 
-    public delegate void DataChannelStateChangedDelegate(Microsoft.MixedReality.WebRTC.DataChannel.ChannelState state);
-    public event DataChannelStateChangedDelegate CommandChannelStateChangedEvent;
-    public event DataChannelStateChangedDelegate InputChannelStateChangedEvent;
+    public delegate void CommandControllerChangedDelegate();
+    public event CommandControllerChangedDelegate OnOpen;
+    public event CommandControllerChangedDelegate OnClose;
 
-    private Microsoft.MixedReality.WebRTC.DataChannel _commandChannel;
-    private Microsoft.MixedReality.WebRTC.DataChannel _inputChannel;
+    private RTCDataChannel _commandChannel;
+    private RTCDataChannel _inputChannel;
+
+    private bool _wasOpen = false;
 
     public RaviCommandController() {
-        _commandHandlers = new Dictionary<string, HandleTextMessageDelegate>();
+        _commandHandlers = new Dictionary<string, TextMessageDelegate>();
     }
 
-    public bool AddHandler(string key, HandleTextMessageDelegate handler) {
-        HiFi.LogUtil.LogUncommonEvent(this, "AddHandler key='{0}'", key);
+    public bool AddHandler(string key, TextMessageDelegate handler) {
+        Log.UncommonEvent(this, "AddHandler key='{0}'", key);
         if (String.IsNullOrEmpty(key)) {
-            HiFi.LogUtil.LogWarning(this, "AddHandler cowardly refuses to add handler for empty key");
+            Log.Warning(this, "AddHandler cowardly refuses to add handler for empty key");
             return false;
         }
         if (handler == null) {
-            HiFi.LogUtil.LogWarning(this, "AddHandler cowardly refuses to add null handler for key='{0}'", key);
+            Log.Warning(this, "AddHandler cowardly refuses to add null handler for key='{0}'", key);
             return false;
         }
         if (_commandHandlers.ContainsKey(key)) {
@@ -87,19 +58,45 @@ public class RaviCommandController {
             _commandHandlers.Remove(key);
             return true;
         }
-        HiFi.LogUtil.LogWarning(this, "RemoveHandler could not find key='{0}'", key);
+        Log.Warning(this, "RemoveHandler could not find key='{0}'", key);
         return false;
     }
 
-    private void OnCommandChannelStateChanged() {
-        CommandChannelStateChangedEvent?.Invoke(_commandChannel.State);
+    bool IsOpen() {
+        // The CommandChannel is considered "open" when both DataChannels have arrived and they are open.
+        return _commandChannel != null && _commandChannel.ReadyState == RTCDataChannelState.Open
+            && _inputChannel != null && _inputChannel.ReadyState == RTCDataChannelState.Open;
     }
 
-    private void OnInputChannelStateChanged() {
-        InputChannelStateChangedEvent?.Invoke(_inputChannel.State);
+    public void OnDataChannel(RTCDataChannel c) {
+        Log.UncommonEvent(this, "OnDataChannel label='{0}' ordered={1} protocol='{2}'", c.Label, c.Ordered, c.Protocol);
+        if (c.Label == "ravi.command") {
+            _commandChannel = c;
+        } else if (c.Label == "ravi.input") {
+            _inputChannel = c;
+        } else {
+            Log.Warning(this, $"OnDataChannel Ignoring unexpected DataChannel label='{0}'", c.Label);
+        }
+        bool isOpen = IsOpen();
+        if (isOpen && !_wasOpen) {
+            _wasOpen = isOpen;
+            OnOpen?.Invoke();
+        }
     }
 
-    public void HandleCommandMessage(byte[] msg) {
+    void OnCommandChannelOpen() {
+        // we don't normally reach this context because the channel
+        // (initiated by remote peer) is open before we know about it
+        Debug.Log("CommandController.OnCommandChannelOpen");
+        bool isOpen = IsOpen();
+        if (isOpen && !_wasOpen) {
+            _wasOpen = isOpen;
+            OnOpen?.Invoke();
+        }
+    }
+
+    void OnCommandMessage(byte[] msg) {
+        Debug.Log("CommandController.OnCommandMessage");
         string textMsg = System.Text.Encoding.UTF8.GetString(msg);
         try {
             JSONNode obj = JSON.Parse(textMsg);
@@ -107,22 +104,42 @@ public class RaviCommandController {
             if (_commandHandlers.ContainsKey(key)) {
                 _commandHandlers[key](obj["p"]);
             } else {
-                HiFi.LogUtil.LogWarning(this, "HandleCommandMessage no handler for command='{0}'", textMsg);
+                Log.Warning(this, "OnCommandMessage no handler for command='{0}'", textMsg);
             }
         } catch (Exception) {
-            // not an error: this is expected flow
+            // not an error: this is expected logic flow
             // msg is not a JSON string
             if (BinaryCommandHandler != null) {
                 try {
                     BinaryCommandHandler(msg);
                 } catch (Exception e) {
-                    HiFi.LogUtil.LogError(this, "HandleCommandMessage failed err='{0}'", e.Message);
+                    Log.Error(this, "OnCommandMessage failed err='{0}'", e.Message);
                 }
             }
         }
     }
 
-    public void HandleInputMessage(byte[] msg) {
+    void OnCommandChannelClose() {
+        Debug.Log("CommandController.OnCommandChannelClose");
+        if (_wasOpen) {
+            _wasOpen = false;
+            OnClose?.Invoke();
+        }
+    }
+
+    void OnInputChannelOpen() {
+        // we don't normally reach this context because the channel
+        // (initiated by remote peer) is open before we know about it
+        Debug.Log("CommandController.OnInputChannelOpen");
+        bool isOpen = IsOpen();
+        if (isOpen && !_wasOpen) {
+            _wasOpen = isOpen;
+            OnOpen?.Invoke();
+        }
+    }
+
+    void OnInputMessage(byte[] msg) {
+        Debug.Log("CommandController.OnInputMessage");
         // We don't expect any messages from the server on _inputChannel
         // but if we did, then this is where we'd handle them.  In an effort to
         // future-proof we offer this hook: try a custom input message handler.
@@ -130,31 +147,39 @@ public class RaviCommandController {
             try {
                 BinaryInputHandler(msg);
             } catch (Exception e) {
-                HiFi.LogUtil.LogError(this, "HandleInputMessage failed err='{0}'", e.Message);
+                Log.Error(this, "HandleInputMessage failed err='{0}'", e.Message);
             }
         }
     }
 
+    void OnInputChannelClose() {
+        Debug.Log("CommandController.OnInputChannelClose");
+        if (_wasOpen) {
+            _wasOpen = false;
+            OnClose?.Invoke();
+        }
+    }
+
     public bool SendCommand(string command, JSONNode payload) {
-        HiFi.LogUtil.LogDebug(this, "SendCommand command='{0}' payload='{1}'", command, payload);
+        Log.Debug(this, "SendCommand command='{0}' payload='{1}'", command, payload);
         try {
             JSONNode obj = new JSONObject();
             obj["c"] = command;
             obj["p"] = payload;
-            _commandChannel.SendMessage(System.Text.Encoding.UTF8.GetBytes(obj.ToString()));
+            _commandChannel.Send(System.Text.Encoding.UTF8.GetBytes(obj.ToString()));
         } catch (Exception e) {
-            HiFi.LogUtil.LogError(this, "SendCommand failed err='{0}'", e.Message);
+            Log.Error(this, "SendCommand failed err='{0}'", e.Message);
             return false;
         }
         return true;
     }
 
     public bool SendInput(string msg) {
-        HiFi.LogUtil.LogDebug(this, "SendInput msg='{0}' msg.Length={1}", msg, msg.Length);
+        Log.Debug(this, "SendInput msg='{0}' msg.Length={1}", msg, msg.Length);
         try {
-            _inputChannel.SendMessage(System.Text.Encoding.UTF8.GetBytes(msg));
+            _inputChannel.Send(System.Text.Encoding.UTF8.GetBytes(msg));
         } catch (Exception e) {
-            HiFi.LogUtil.LogError(this, "SendTextMessage failed err='{0}'", e.Message);
+            Log.Error(this, "SendInput failed err='{0}'", e.Message);
             return false;
         }
         return true;
