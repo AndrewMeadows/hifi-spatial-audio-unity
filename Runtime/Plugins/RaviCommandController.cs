@@ -35,14 +35,14 @@ public class RaviCommandController {
         _commandHandlers = new Dictionary<string, TextMessageDelegate>();
     }
 
-    public bool AddHandler(string key, TextMessageDelegate handler) {
-        Log.UncommonEvent(this, "AddHandler key='{0}'", key);
+    public bool AddCommandHandler(string key, TextMessageDelegate handler) {
+        Log.UncommonEvent(this, "AddCommandHandler key='{0}'", key);
         if (String.IsNullOrEmpty(key)) {
-            Log.Warning(this, "AddHandler cowardly refuses to add handler for empty key");
+            Log.Warning(this, "AddCommandHandler cowardly refuses to add handler for empty key");
             return false;
         }
         if (handler == null) {
-            Log.Warning(this, "AddHandler cowardly refuses to add null handler for key='{0}'", key);
+            Log.Warning(this, "AddCommandHandler cowardly refuses to add null handler for key='{0}'", key);
             return false;
         }
         if (_commandHandlers.ContainsKey(key)) {
@@ -72,8 +72,14 @@ public class RaviCommandController {
         Log.UncommonEvent(this, "OnDataChannel label='{0}' ordered={1} protocol='{2}'", c.Label, c.Ordered, c.Protocol);
         if (c.Label == "ravi.command") {
             _commandChannel = c;
+            _commandChannel.OnOpen = OnCommandChannelOpen;
+            _commandChannel.OnMessage = OnCommandChannelMessage;
+            _commandChannel.OnClose = OnCommandChannelClose;
         } else if (c.Label == "ravi.input") {
             _inputChannel = c;
+            _inputChannel.OnOpen = OnInputChannelOpen;
+            _inputChannel.OnMessage = OnInputChannelMessage;
+            _inputChannel.OnClose = OnInputChannelClose;
         } else {
             Log.Warning(this, $"OnDataChannel Ignoring unexpected DataChannel label='{0}'", c.Label);
         }
@@ -95,8 +101,8 @@ public class RaviCommandController {
         }
     }
 
-    void OnCommandMessage(byte[] msg) {
-        Debug.Log("CommandController.OnCommandMessage");
+    void OnCommandChannelMessage(byte[] msg) {
+        Debug.Log("CommandController.OnCommandChannelMessage");
         string textMsg = System.Text.Encoding.UTF8.GetString(msg);
         try {
             JSONNode obj = JSON.Parse(textMsg);
@@ -104,7 +110,7 @@ public class RaviCommandController {
             if (_commandHandlers.ContainsKey(key)) {
                 _commandHandlers[key](obj["p"]);
             } else {
-                Log.Warning(this, "OnCommandMessage no handler for command='{0}'", textMsg);
+                Log.Warning(this, "OnCommandChannelMessage no handler for command='{0}'", textMsg);
             }
         } catch (Exception) {
             // not an error: this is expected logic flow
@@ -113,7 +119,7 @@ public class RaviCommandController {
                 try {
                     BinaryCommandHandler(msg);
                 } catch (Exception e) {
-                    Log.Error(this, "OnCommandMessage failed err='{0}'", e.Message);
+                    Log.Error(this, "OnCommandChannelMessage failed err='{0}'", e.Message);
                 }
             }
         }
@@ -138,8 +144,8 @@ public class RaviCommandController {
         }
     }
 
-    void OnInputMessage(byte[] msg) {
-        Debug.Log("CommandController.OnInputMessage");
+    void OnInputChannelMessage(byte[] msg) {
+        Debug.Log("CommandController.OnInputChannelMessage");
         // We don't expect any messages from the server on _inputChannel
         // but if we did, then this is where we'd handle them.  In an effort to
         // future-proof we offer this hook: try a custom input message handler.

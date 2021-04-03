@@ -345,18 +345,6 @@ public class RaviSignaler : MonoBehaviour {
         Debug.Log("RaviSignaler.HandleIceSignal");
     }
 
-    /*
-    // HACK: periodic dump of webrtc info
-    private IEnumerator DumpSdp() {
-        Debug.Log("start DumpSdp()");
-        while (true) {
-            yield return new WaitForSeconds(1);
-            var desc = PeerConnection.LocalDescription;
-            Debug.Log($"peerConnection sdp: {desc.sdp}");
-        }
-    }
-    */
-
     void HandleIceConnectionChange(RTCIceConnectionState state) {
         // mostly for debug so we can see how states evolve
         switch (state) {
