@@ -14,15 +14,16 @@
 5. Add **SimpleJSON** plugin
     1. Download from here: https://raw.githubusercontent.com/Bunny83/SimpleJSON/master/SimpleJSON.cs
     2. Copy SimpleJSON.cs into your Project/Plugins directory
-6. Add **Microsoft-MixedReality-Webrtc** plugin
-    1. Download the latest tarball from https://github.com/microsoft/MixedReality-WebRTC/tags
+6. Add **Unity-Technologies-Webrtc** plugin
     2. Open Unity Window-->Package_Manager
-    3. Click "+" button (upper left) --> Add_package_from_tarball...
-    4. Select downloaded tarball
+    3. Click "Advanced" combo box and check "Show Preview Packages" option.
+    4. Search for "webrtc".
+    5. Select "WebRTC preview -2.3.x-preview" package.
 7. The **hifi-spatial-audio-unity** project is not yet bundled into a clean plugin and must be installed manually:
     1. Clone this repo to local disk
     2. Copy all `Plugins/*.cs` files to your `Project/Plugins/` directory
     3. Copy all `Scrips/*.cs` files to your `Project/Scripts/` directory
-8. Drag `Project/Scripts/TestHiFiSession.cs` onto the **Camera** GameObject
+    4. Copy all `Scripts/Test/*.cs` files to `Project/Scripts/Test` directory
+8. Drag `Project/Scripts/Test/TestHiFiSession.cs` onto the **Camera** GameObject
 9. Edit `TestHiFiSession.cs` to connect to your test **HiFi-audio-mixer** URL and custom **JWT**
-10. Run demo
+10. Run demo and watch the Console logs.  You should see the demo connect and start updating the user's position.
