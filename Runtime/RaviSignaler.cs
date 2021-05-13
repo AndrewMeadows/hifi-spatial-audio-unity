@@ -195,6 +195,45 @@ public class RaviSignaler : MonoBehaviour {
         }
     }
 
+    void UpdateRtcConfiguration(JSONNode turn) {
+        RTCIceServer turnServer = new RTCIceServer();
+        if (turn.HasKey("urls") && turn["urls"].IsArray) {
+            JSONArray urls_array = turn["urls"].AsArray;
+            List<string> urls_list = new List<string>();
+            foreach(JSONNode url in urls_array) {
+                urls_list.Add(url);
+            }
+            turnServer.urls = urls_list.ToArray();
+        } else {
+            Log.Warning(this, "UpdateRtcConfiguration 'turn' lacks 'urls' field");
+            return;
+        }
+        if (turn.HasKey("credential") && turn["credential"].IsString) {
+            turnServer.credential = turn["credential"].Value;
+        } else {
+            Log.Warning(this, "UpdateRtcConfiguration 'turn' lacks 'credential' field");
+            return;
+        }
+        if (turn.HasKey("username") && turn["username"].IsString) {
+            turnServer.username = turn["username"].Value;
+        } else {
+            Log.Warning(this, "UpdateRtcConfiguration 'turn' lacks 'username' field");
+            return;
+        }
+        turnServer.credentialType = RTCIceCredentialType.Password;
+
+        RTCConfiguration config = default;
+        config.iceServers = new RTCIceServer[] {
+            new RTCIceServer { urls = new string[] { "stun:stun.l.google.com:19302" } },
+            turnServer
+        };
+
+        RTCErrorType err = PeerConnection.SetConfiguration(ref config);
+        if (err != RTCErrorType.None) {
+            Log.Warning(this, "failed to set PeerConnection configuration err='{0}'", err);
+        }
+    }
+
     void OnWebSocketMessage(byte[] msg) {
         // Reading a plain text message
         string message = System.Text.Encoding.UTF8.GetString(msg);
@@ -205,6 +244,9 @@ public class RaviSignaler : MonoBehaviour {
             if (signal.HasKey("error") && signal["error"] == "service-unavailable") {
                 UpdateState(SignalState.Unavailable);
             } else if (signal.HasKey("sdp")) {
+                if (signal.HasKey("turn")) {
+                    UpdateRtcConfiguration(signal["turn"]);
+                }
                 if (State == SignalState.Connecting) {
                     UpdateState(SignalState.Signaling);
                 }

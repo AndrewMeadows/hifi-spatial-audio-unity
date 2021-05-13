@@ -95,13 +95,20 @@ public class RaviSession : MonoBehaviour {
 
     void CreatePeerConnection() {
         Log.Debug(this, "CreatePeerConnection");
-        // we were not given a PeerConnection from external logic
-        // so we create our own and external logic must reference it
-        RTCConfiguration config = default;
-        config.iceServers = new RTCIceServer[] {
-            new RTCIceServer { urls = new string[] { "stun:stun.l.google.com:19302" } }
+
+        // we start with a default RtcConfiguration
+        // but the Signaler expects to receive an updated config on session start
+        RTCConfiguration defaultRtcConfig = default;
+        defaultRtcConfig.iceServers = new RTCIceServer[] {
+            new RTCIceServer { urls = new string[] { "stun:stun.l.google.com:19302" } },
+            new RTCIceServer {
+                urls = new string[] { "turn:turn.highfidelity.com:3478"},
+                credential = "chariot-travesty-hook",
+                credentialType = RTCIceCredentialType.Password,
+                username = "clouduser"
+            }
         };
-        PeerConnection = new RTCPeerConnection(ref config);
+        PeerConnection = new RTCPeerConnection(ref defaultRtcConfig);
 
         // latch onto PeerConnection
         PeerConnection.OnConnectionStateChange = OnConnectionStateChange;
