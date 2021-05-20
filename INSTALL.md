@@ -1,5 +1,6 @@
 # Install package
-Using the Unity editor's package manager, install via github link: https://github.com/highfidelity/hifi-spatial-audio-unity.git
+Eventually it will be possible to install via github URL: https://github.com/highfidelity/hifi-spatial-audio-unity.git.
+In the meantime you must obtain this package as a tarball or by file when unfurled onto local filesystem.
 
 ## Dependencies
 Modified com.unity.webrtc which exposes the default audio device directly to webrtc rather than go through Unity's spatialized 3D audio subsystem:
