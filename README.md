@@ -21,7 +21,7 @@ Please see [Install package](INSTALL.md).
     1. Set the `HiFiCommunicator.SignalingServiceUrl` to `wss://api.highfidelity.com:8001/`.
     1. Set the `HiFiCommunicator.JWT`
     1. Call `HiFiCommunicator.ConnectToHiFiAudioAPIServer();`
-    1. Every frame set `HiFiCommunicator.UserData.Position` and `.Orientation`.  Note the HiFi world coordinate frame is right-hand Cartesian with **forward=z-axis** and **up=y-axis**.  If the Unity project is using a different coordinate system then values must be transformed into the HiFi world frame before setting `HiFiCommunicator.UserData`.
+    1. Every frame set `HiFiCommunicator.UserData.Position` and `.Orientation` in the HiFi-frame.  Note the HiFi world coordinate frame is right-hand Cartesian with **forward=z-axis** and **up=y-axis**.  The Unity project will undoubtedly be using a different coordinate system and values must be transformed into the HiFi-frame before setting `HiFiCommunicator.UserData`.  There is a `HiFiCoordinateFrameUtil` class to help with this.
 
 ## Licenses
 
