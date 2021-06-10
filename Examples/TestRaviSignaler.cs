@@ -10,7 +10,7 @@ using Unity.WebRTC;
 /// </summary>
 public class TestRaviSignaler : MonoBehaviour {
 
-    public string WebSocketUrl = "wss://api.highfidelity.com:8001/";
+    public string WebSocketUrl = "wss://api.highfidelity.com:443/";
     public Ravi.RaviSignaler _signaler;
     bool _loggedOnce = false;
 

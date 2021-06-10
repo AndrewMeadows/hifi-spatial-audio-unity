@@ -26,7 +26,7 @@ public class TestHiFiCommunicator : MonoBehaviour {
         _hiFiCommunicator = gameObject.AddComponent<HiFi.HiFiCommunicator>() as HiFi.HiFiCommunicator;
         _hiFiCommunicator.ConnectionStateChangedEvent += OnSessionStateChanged;
 
-        _hiFiCommunicator.SignalingServiceUrl = "wss://api.highfidelity.com:8001/";
+        _hiFiCommunicator.SignalingServiceUrl = "wss://api.highfidelity.com:443/";
         _hiFiCommunicator.JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBfaWQiOiIxNTU3Zjg1Ny1kOWQ5LTRhYzctOGFjYy1hM2IwNmY2MDhhNmQiLCJ1c2VyX2lkIjoiYW5kcmV3Iiwic3BhY2VfaWQiOiI4YWNhZDk1ZS1mZWI2LTQwNzMtYjdjZi1iYTJmMDVmNzFlZTIiLCJzdGFjayI6ImF1ZGlvbmV0LW1peGVyLWFwaS1ob2JieS0wMSJ9.e4LpUo6WLGlKHquuwSjrxscZ31t5wtW-VnoH7IMS71w";
 
         _position = new Vector3(0.0f, 0.0f, 0.0f);
