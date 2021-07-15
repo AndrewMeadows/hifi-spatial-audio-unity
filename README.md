@@ -2,7 +2,7 @@
 
 <img src="https://img.shields.io/badge/unity-2019.4-green.svg?style=flat-square" alt="unity 2019.4">
 
-This package provides access to [HiFi Spatialized Audio](https://www.highfidelity.com/api) in Unity.
+This package provides access to [HiFi Spatialized Audio](https://docs.highfidelity.com/js/latest/index.html) in Unity.
 
 ## Installation
 
@@ -22,6 +22,27 @@ Please see [Install package](INSTALL.md).
     1. Set the `HiFiCommunicator.JWT`
     1. Call `HiFiCommunicator.ConnectToHiFiAudioAPIServer();`
     1. Every frame set `HiFiCommunicator.UserData.Position` and `.Orientation` in the HiFi-frame.  Note the HiFi world coordinate frame is right-hand Cartesian with **forward=z-axis** and **up=y-axis**.  The Unity project will undoubtedly be using a different coordinate system and values must be transformed into the HiFi-frame before setting `HiFiCommunicator.UserData`.  There is a `HiFiCoordinateFrameUtil` class to help with this.
+
+## Using the Bumpers Sample
+
+1. Import the dependencies and the package [https://github.com/highfidelity/hifi-spatial-audio-unity.git](INSTALL.md).
+2. Import the Bumpers Sample from the package. (e.g., select the HiFi Spatialized Audio package in the Package Manager => Samples => Bumpers => Import)
+3. From the Project window, add Assets => Samples => HiFi Spatialized Audio => 0.1.0 => Bumpers => Scenes => BumpersScene to the Hierarchy, and remove any other scenes.
+4. In the "BumpersScene" Hierarchy, select gameManager. In the Inspector, click on the empty text box next to "Hi Fi Jwt". Enter a JWT generated from https://account.highfidelity.com
+5. Set up an Input Axis Rotate if it doesn't already exist, using Edit => Project Setting... => Input Manager => Axes.
+Increase size to get a new field. Change values:
+```
+  Name: Rotate
+  Negative Button: d
+  Positive Button: a
+  Alt Negative Button: right
+  Alt Positive Button: left
+  Gravity: 3
+  Sensitivity: 3
+  Snap: (checked)
+  Type: Key or Mouse Button
+  Axis: X axis
+```
 
 ## Licenses
 

@@ -2,6 +2,10 @@
   "name": "com.highfidelity.spatialized-audio",
   "displayName": "HiFi Spatialized Audio",
   "version": "0.1.0",
+  "author": {
+    "name" : "High Fidelity",
+    "url" : "http://highfidelity.com"
+  },
   "unity": "2019.4",
   "description": "Spatialized audio over WebRTC",
   "keywords": [
@@ -12,7 +16,14 @@
   ],
   "dependencies": {
     "com.endel.nativewebsocket": "1.1.1",
-    "com.unity.webrtc": "2.4.0-hifi.1"
-  }
+    "com.unity.webrtc": "2.4.0-exp.3"
+  },
+  "samples": [
+    {
+      "displayName": "Bumpers",
+      "description": "A multi-user 2D app with 3D High Fidelity Audio spatialized to each user's 'dot', alongside background audio.",
+      "path": "Samples~/Bumpers"
+    }
+  ]
 }
 
