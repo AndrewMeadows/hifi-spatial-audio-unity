@@ -62,7 +62,7 @@ public class RaviCommandController {
         return false;
     }
 
-    bool IsOpen() {
+    public bool IsOpen() {
         // The CommandChannel is considered "open" when both DataChannels have arrived and they are open.
         return _commandChannel != null && _commandChannel.ReadyState == RTCDataChannelState.Open
             && _inputChannel != null && _inputChannel.ReadyState == RTCDataChannelState.Open;

@@ -467,7 +467,7 @@ public class RaviSignaler : MonoBehaviour {
     void OnNegotiationNeeded() {
         Log.UncommonEvent(this, "OnNegotiationNeeded");
         //var signalingState = PeerConnection.SignalingState;
-        //Debug.Log($"OnNegotiationNeeded() state={signalingState}");
+        //Log($"OnNegotiationNeeded() state={signalingState}");
         /* TODO: port this from JS impl:
         RaviUtils.log("need renegotiation please", "RaviWebRTCImplementation");
         const msg = {
