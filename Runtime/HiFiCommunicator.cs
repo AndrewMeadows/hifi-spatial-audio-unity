@@ -191,9 +191,9 @@ public class HiFiCommunicator : MonoBehaviour {
     /// <summary name="UserDataStreamingScope">
     /// Scope of available user data to be streamed from HiFi Spatial Audio Service
     /// </summary>
-    /// <remarks>Default value is 'None'</remarks>
+    /// <remarks>Default value is 'All'</remarks>
     /// <see cref="UserDataScope"/>
-    public UserDataScope UserDataStreamingScope = UserDataScope.None;
+    public UserDataScope UserDataStreamingScope = UserDataScope.All;
 
 
     /// <summary name="SignalingServiceUrl">
