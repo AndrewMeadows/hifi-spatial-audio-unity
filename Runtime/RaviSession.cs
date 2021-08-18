@@ -17,12 +17,13 @@ namespace Ravi {
 [AddComponentMenu("RaviSession")]
 public class RaviSession : MonoBehaviour {
     public enum SessionState {
-        New = 0,
-        Connecting,
+        Closed = 0,
+        Signaling,
         Connected,
+        ConnectedWithBothDataChannels,
         Disconnected,
         Failed,
-        Closed,
+        Closing,
         Unavailable
     }
 
@@ -51,21 +52,20 @@ public class RaviSession : MonoBehaviour {
 
     public SessionState State { get; internal set; }
 
+    // TODO?: get rid of the CommandController abstraction and move its behavior to this class
     public RaviCommandController CommandController { get; internal set; }
 
     MediaStream _audioStream;
     List<RTCRtpSender> _rtpSenders;
-    bool _disposeWebRtcOnDestroy = false;
 
     public RaviSession() {
-        State = SessionState.New;
+        State = SessionState.Closed;
         CommandController = new RaviCommandController();
         CommandController.OnOpen += OnCommandControllerOpen;
         CommandController.OnClose += OnCommandControllerClose;
     }
 
     void Awake() {
-        _disposeWebRtcOnDestroy = RaviUtil.InitializeWebRTC();
         CreatePeerConnection();
 
         // pick a SessionId if we don't already have one
@@ -147,21 +147,73 @@ public class RaviSession : MonoBehaviour {
     }
 
     void OnCommandControllerOpen() {
-        Log.UncommonEvent(this, "OnCommandControllerOpen");
-        if (State == SessionState.Connecting) {
-            UpdateSessionState(SessionState.Connected);
+        Log.UncommonEvent(this, "OnCommandControllerOpen SessionState={0}", State);
+        if (State == SessionState.Signaling || State == SessionState.Connected) {
+            UpdateState(SessionState.ConnectedWithBothDataChannels);
         }
     }
 
     void OnCommandControllerClose() {
-        Log.UncommonEvent(this, "OnCommandControllerClose");
-        if (State == SessionState.Connected) {
-            UpdateSessionState(SessionState.Closed);
+        Log.UncommonEvent(this, "OnCommandControllerClose SessionState={0}", State);
+        switch(State) {
+            case SessionState.Signaling:
+            case SessionState.Connected:
+            case SessionState.ConnectedWithBothDataChannels:
+                UpdateState(SessionState.Failed);
+                break;
+            default:
+                break;
         }
     }
 
     void OnConnectionStateChange(RTCPeerConnectionState state) {
         Log.UncommonEvent(this, "OnConnectionStateChange PeerConnection.State='{0}'", state);
+        SessionState new_state = State;
+        switch(state) {
+            case RTCPeerConnectionState.Connected:
+                if (State == SessionState.Signaling
+                        || State == SessionState.Disconnected
+                        || State == SessionState.ConnectedWithBothDataChannels)
+                {
+                    new_state = SessionState.Connected;
+                }
+                if (new_state == SessionState.Connected
+                        && CommandController.IsOpen())
+                {
+                    new_state = SessionState.ConnectedWithBothDataChannels;
+                }
+                break;
+            case RTCPeerConnectionState.Disconnected:
+                if (State == SessionState.Signaling
+                        || State == SessionState.Connected
+                        || State == SessionState.ConnectedWithBothDataChannels)
+                {
+                    new_state = SessionState.Disconnected;
+                }
+                break;
+            case RTCPeerConnectionState.Failed:
+                if (State == SessionState.Signaling
+                        || State == SessionState.Connected
+                        || State == SessionState.ConnectedWithBothDataChannels)
+                {
+                    new_state = SessionState.Failed;
+                }
+                break;
+            case RTCPeerConnectionState.Closed:
+                if (State == SessionState.Signaling
+                        || State == SessionState.Connected
+                        || State == SessionState.ConnectedWithBothDataChannels
+                        || State == SessionState.Disconnected)
+                {
+                    new_state = SessionState.Failed;
+                } else if (State == SessionState.Closing) {
+                    new_state = SessionState.Closed;
+                }
+                break;
+            default:
+                break;
+        }
+        UpdateState(new_state);
     }
 
     void OnTrack(RTCTrackEvent e) {
@@ -183,10 +235,6 @@ public class RaviSession : MonoBehaviour {
             PeerConnection.Dispose();
             PeerConnection = null;
         }
-        if (_disposeWebRtcOnDestroy) {
-            RaviUtil.DisposeWebRTC();
-            _disposeWebRtcOnDestroy = false;
-        }
     }
 
     /// <summary>
@@ -198,9 +246,9 @@ public class RaviSession : MonoBehaviour {
     public void Connect(string signalUrl) {
         Log.UncommonEvent(this, "Open");
         if (State == SessionState.Failed || State == SessionState.Unavailable) {
-            UpdateSessionState(SessionState.Closed);
+            UpdateState(SessionState.Closed);
         }
-        if (State == SessionState.New || State == SessionState.Closed) {
+        if (State == SessionState.Closed) {
             // Open signal socket and try to get a _realPeerConnection
             if (PeerConnection == null) {
                 throw new InvalidOperationException("null RaviSession.PeerConnection");
@@ -216,6 +264,7 @@ public class RaviSession : MonoBehaviour {
     /// Close connection to the WebRTC Signaler and PeerConnection
     /// </summary>
     public void Close() {
+        UpdateState(SessionState.Closing);
         Signaler.Disconnect();
         PeerConnection.Close();
     }
@@ -244,21 +293,24 @@ public class RaviSession : MonoBehaviour {
 
     IEnumerator ConnectInternal(string signalUrl) {
         Log.UncommonEvent(this, "ConnectInternal coroutine...");
-        UpdateSessionState(SessionState.Connecting);
+        UpdateState(SessionState.Signaling);
         bool success = Signaler.Connect(signalUrl);
         if (!success) {
-            UpdateSessionState(SessionState.Failed);
+            UpdateState(SessionState.Failed);
             yield break;
         }
 
         // loop until change or timeout
         // TODO: make the timeout a class property
         const int CONNECTION_TIMEOUT_SECONDS = 5; // seconds
-        DateTime expiry = DateTime.Now.AddSeconds(CONNECTION_TIMEOUT_SECONDS);
-        while (State == SessionState.Connecting) {
-            if (expiry < DateTime.Now) {
-                UpdateSessionState(SessionState.Failed);
+        long now = DateTimeOffset.Now.Ticks;
+        const long TICKS_PER_SECOND = 10000000; // 1 tick = 100 nsec
+        long expiry = now + CONNECTION_TIMEOUT_SECONDS * TICKS_PER_SECOND;
+        while (State == SessionState.Signaling) {
+            now = DateTimeOffset.Now.Ticks;
+            if (expiry < now) {
                 Log.Warning(this, "Connect timed out");
+                UpdateState(SessionState.Failed);
                 yield break;
             }
             yield return 1;
@@ -266,9 +318,9 @@ public class RaviSession : MonoBehaviour {
         Log.Debug(this, "ConnectInternal coroutine completed");
     }
 
-    void UpdateSessionState(SessionState newState) {
+    void UpdateState(SessionState newState) {
         if (newState != State) {
-            Log.UncommonEvent(this, "UpdateSessionState {0}-->{1}", State, newState);
+            Log.UncommonEvent(this, "UpdateState {0}-->{1}", State, newState);
             State = newState;
             SessionStateChangedEvent?.Invoke(State);
         }
@@ -277,7 +329,7 @@ public class RaviSession : MonoBehaviour {
     void OnSignalStateChanged(RaviSignaler.SignalState state) {
         Log.Debug(this, "OnSignalStateChanged signalState={0} sessionState={1}", state, State);
         if (state == RaviSignaler.SignalState.Unavailable) {
-            UpdateSessionState(SessionState.Unavailable);
+            UpdateState(SessionState.Unavailable);
         }
     }
 }

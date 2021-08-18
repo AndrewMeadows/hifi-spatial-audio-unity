@@ -15,8 +15,7 @@ public class GameManager : MonoBehaviour {
 
     MyBumper _myBumper;
     System.Random _random;
-    HiFi.HiFiCommunicator _hifiCommunicator;
-    bool _reconnectToHiFi = true;
+    HiFi.HiFiCommunicator _communicator;
 
     Dictionary<string, OtherBumper> _others;
 
@@ -35,7 +34,13 @@ public class GameManager : MonoBehaviour {
     }
 
     void Start() {
-        _hifiCommunicator = gameObject.AddComponent<HiFi.HiFiCommunicator>() as HiFi.HiFiCommunicator;
+        _communicator = gameObject.AddComponent<HiFi.HiFiCommunicator>() as HiFi.HiFiCommunicator;
+
+        // we can configure the communicator to retry on failure and also to reconnect
+        HiFi.HiFiConnectionAndTimeoutConfig config = new HiFi.HiFiConnectionAndTimeoutConfig();
+        config.AutoRetryConnection = true;
+        config.AutoReconnect = true;
+        _communicator.ConnectionConfig = config;
 
         _myBumper = Instantiate(myBumper) as MyBumper;
         _random = new System.Random();
@@ -65,15 +70,15 @@ public class GameManager : MonoBehaviour {
             Application.Quit();
         #endif
         } else {
-            _hifiCommunicator.PeerDataUpdatedEvent += HandlePeerChanges;
-            _hifiCommunicator.PeerDisconnectedEvent += HandlePeerDisconnects;
-            _hifiCommunicator.ConnectionStateChangedEvent += HandleHiFiConnectionStateChange;
-            _hifiCommunicator.SignalingServiceUrl = HiFiUrl;
-            _hifiCommunicator.JWT = HiFiJwt;
-            _hifiCommunicator.UserDataStreamingScope = HiFi.HiFiCommunicator.UserDataScope.Peers;
-            _hifiCommunicator.ConnectToHiFiAudioAPIServer();
+            _communicator.PeerDataUpdatedEvent += HandlePeerChanges;
+            _communicator.PeerDisconnectedEvent += HandlePeerDisconnects;
+            _communicator.ConnectionStateChangedEvent += HandleHiFiConnectionStateChange;
+            _communicator.SignalingServiceUrl = HiFiUrl;
+            _communicator.JWT = HiFiJwt;
+            _communicator.UserDataStreamingScope = HiFi.HiFiCommunicator.UserDataScope.Peers;
+            _communicator.ConnectToHiFiAudioAPIServer();
         }
-        _reconnectToHiFi = false;
+        _communicator.ConnectToHiFiAudioAPIServer();
     }
 
     void Update() {
@@ -85,8 +90,6 @@ public class GameManager : MonoBehaviour {
         #else
             Application.Quit();
         #endif
-        } else if (_reconnectToHiFi) {
-            _hifiCommunicator.ConnectToHiFiAudioAPIServer();
         }
     }
 
@@ -97,13 +100,13 @@ public class GameManager : MonoBehaviour {
         Quaternion q = _myBumper.transform.rotation;
 #if USE_HIFI_COORDINATE_FRAME_UTIL
         // This is how to do it using HiFiCoordinateFrameUtil
-        _hifiCommunicator.UserData.Position = HiFi.HiFiCoordinateFrameUtil.UnityPositionToHiFi(p);
-        _hifiCommunicator.UserData.Orientation = HiFi.HiFiCoordinateFrameUtil.UnityOrientationToHiFi(q);
+        _communicator.UserData.Position = HiFi.HiFiCoordinateFrameUtil.UnityPositionToHiFi(p);
+        _communicator.UserData.Orientation = HiFi.HiFiCoordinateFrameUtil.UnityOrientationToHiFi(q);
 #else
         // This is how to do it manually (and more efficiently)
         // since all expected rotations are about the "up" axis
-        _hifiCommunicator.UserData.Position = new Vector3(p.x, 0.0f, -p.y);
-        _hifiCommunicator.UserData.Orientation = new Quaternion(0.0f, q.z, 0.0f, q.w);
+        _communicator.UserData.Position = new Vector3(p.x, 0.0f, -p.y);
+        _communicator.UserData.Orientation = new Quaternion(0.0f, q.z, 0.0f, q.w);
 
 #endif
     }
@@ -147,23 +150,21 @@ public class GameManager : MonoBehaviour {
     }
 
     void HandleHiFiConnectionStateChange(HiFi.HiFiCommunicator.AudionetConnectionState state) {
-        Debug.Log($"HiFiCommunicator state='{state}'");
-        if (state == HiFi.HiFiCommunicator.AudionetConnectionState.Unavailable
-            || state == HiFi.HiFiCommunicator.AudionetConnectionState.Failed)
-        {
-            _reconnectToHiFi = true;
-        }
+        Ravi.Log.UncommonEvent(this, "HiFiCommunicator state={0}", state);
+        // Do special handling for Connection state change here
+        // for example: we used to trigger a reconnection here on failure
+        // however now HiFiCommunicator can be configured to reconnect on its own.
     }
 
     public void MuteAudioWithGain(bool foo) {
         bool muted = toggleGain.isOn;
-        _hifiCommunicator.SetInputAudioMuted(muted);
+        _communicator.SetInputAudioMuted(muted);
     }
 
     public void SetOtherGain(float gain) {
         foreach(KeyValuePair<string, OtherBumper> entry in _others) {
             string hashedVisitId = entry.Key;
-            bool success = _hifiCommunicator.SetOtherUserGainForThisConnection(hashedVisitId, gain);
+            bool success = _communicator.SetOtherUserGainForThisConnection(hashedVisitId, gain);
             break;
         }
     }

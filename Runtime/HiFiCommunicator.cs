@@ -24,6 +24,7 @@ public struct HiFiMixerInfo {
     public string buildVersion;
     public string visitId;
     public string visitIdHash;
+    public string userId;
 }
 
 /// <summary>
@@ -129,18 +130,24 @@ public class UserDataWrapper {
 [AddComponentMenu("HiFi Spatial Audio Communicator")]
 [Serializable]
 public class HiFiCommunicator : MonoBehaviour {
+    const long THE_DISTANT_FUTURE = Int64.MaxValue;
+
     /// <summary name="AudionetConnectionState">
     /// Possible connection states values between HiFiCommunicator and HiFi Spatial Audio Service
     /// </summary>
     /// <see cref="ConnectionState"/>
     public enum AudionetConnectionState {
-        Signaling = 0,
+        Disconnected = 0,
         Connecting,
         Connected,
-        Disconnected,
+        Reconnecting,
+        Disconnecting,
         Failed,
         Unavailable // e.g. when API Server is at capacity
     }
+
+    const long TICKS_PER_MSEC = 10000; // 1 tick = 100 nsec
+    const long TICKS_PER_SECOND = 10000000;
 
     /// <summary name="UserDataScope">
     /// Possible scopes allowed for User data subscription from HiFi Spatial Audio Service
@@ -184,9 +191,9 @@ public class HiFiCommunicator : MonoBehaviour {
     /// <summary name="UserDataStreamingScope">
     /// Scope of available user data to be streamed from HiFi Spatial Audio Service
     /// </summary>
-    /// <remarks>Default value is 'None'</remarks>
+    /// <remarks>Default value is 'All'</remarks>
     /// <see cref="UserDataScope"/>
-    public UserDataScope UserDataStreamingScope = UserDataScope.None;
+    public UserDataScope UserDataStreamingScope = UserDataScope.All;
 
 
     /// <summary name="SignalingServiceUrl">
@@ -200,20 +207,25 @@ public class HiFiCommunicator : MonoBehaviour {
     /// The JWT stores the providedUserID (aka "publicly visible user name")
     /// of this connection as well as the "Space" to connect to and possibly other
     /// Space/session relevant meta data such as expiry.  Typically these are
-    /// generated or commissioned by the client's Application on a
-    /// per-user basis.
+    /// generated or commissioned by the client's Application on a per-user basis.
     /// </remarks>
     [Tooltip("Json Web Token (client/server identification, and session info)")]
     public string JWT;
 
-    /// <summary name="RaviSession">RaviSession component</summary>
-    /// <remarks>
-    /// HiFi Spatial Audio is built on top of a lower protocol called "Ravi".
-    /// </remarks>
-    [Tooltip("RaviSession")]
-    public RaviSession RaviSession;
+    RaviSession RaviSession;
 
-    float _userDataUpdatePeriod = 50.0f; // msec, 20 Hz
+    long _userDataUpdatePeriod = 50; // msec, 20 Hz
+
+    /// <summary name="ConnectionConfig">Config for reconnection and timeouts</summary>
+    /// <remarks>
+    /// AutoRetryConnection = whether to retry initial connection, false by default
+    /// RetryConnectionTimeout = how long to retry initial connection, 15 seconds by default
+    /// AutoReconnect = whether to reconnect on broken connection, false by default
+    /// ReconnectionTimeout = how long to attempt reconnection, 60 seconds by default
+    /// ConnectionDelayMs = delay after failed connection before starting next, 500 msec by default
+    /// ConnectionTimeoutMs = how long to wait for each connection attempt, 5000 msec by default
+    /// </remarks>
+    public HiFiConnectionAndTimeoutConfig ConnectionConfig;
 
     /// <summary name="UserDataUpdatePeriod">
     /// Minimum time (msec) between between OutgoingAudioAPIData updates to HiFi service.
@@ -221,16 +233,25 @@ public class HiFiCommunicator : MonoBehaviour {
     /// <remarks>
     /// Default value is 50 msec (20 Hz).
     /// </remarks>
-    public float UserDataUpdatePeriod {
+    public long UserDataUpdatePeriod {
         set {
-            const float MIN_USER_DATA_UPDATE_PERIOD = 20.0f; // msec
-            const float MAX_USER_DATA_UPDATE_PERIOD = 5000.0f; // msec
-            _userDataUpdatePeriod = Mathf.Clamp(value, MIN_USER_DATA_UPDATE_PERIOD, MAX_USER_DATA_UPDATE_PERIOD);
+            const long MIN_USER_DATA_UPDATE_PERIOD = 20; // msec
+            const long MAX_USER_DATA_UPDATE_PERIOD = 5000; // msec
+            if (value < MIN_USER_DATA_UPDATE_PERIOD) {
+                value = MIN_USER_DATA_UPDATE_PERIOD;
+            } else if (value > MAX_USER_DATA_UPDATE_PERIOD) {
+                value = MAX_USER_DATA_UPDATE_PERIOD;
+            }
+            _userDataUpdatePeriod = value;
         }
         get { return _userDataUpdatePeriod; }
     }
 
-    DateTime _userDataUpdateExpiry;
+    long _userDataUpdateExpiry; // ticks (100 nsec)
+    long _connectingExpiry;
+    long _reconnectingExpiry;
+    long _attemptExpiry;
+    long _nextAttempt;
 
     /// <summary name="ConnectionStateChangedDelegate">
     /// The function signature for the ConnectionStateChangedEvent
@@ -282,7 +303,7 @@ public class HiFiCommunicator : MonoBehaviour {
     public UserDataWrapper UserData { get; internal set; }
 
     HiFiMixerInfo _mixerInfo;
-    Dictionary<string, IncomingAudioAPIData> _peerDataMap;
+    Dictionary<string, IncomingAudioAPIData> _peerDataMap; // "peer key"-->IncomingAudioAPIData
     Dictionary<string, string> _peerKeyMap; // hashdVisitId-->"peer key"
     SortedSet<string> _changedPeerKeys;
     SortedSet<string> _deletedVisitIds;
@@ -294,16 +315,23 @@ public class HiFiCommunicator : MonoBehaviour {
     bool _stateHasChanged = false;
     bool _peerDataHasChanged = false;
     bool _peersHaveDisconnected = false;
+    bool _neverConnected = true;
+
+    public HiFiCommunicator() {
+        _userDataUpdateExpiry = 0;
+        _connectingExpiry = 0;
+        _reconnectingExpiry = 0;
+        _attemptExpiry = THE_DISTANT_FUTURE;
+        _nextAttempt = THE_DISTANT_FUTURE;
+    }
 
     void Awake() {
+        RaviUtil.InitializeWebRTC();
         const int MAX_UNCOMPRESSED_BUFFER_SIZE = 65536;
         _uncompressedData = new byte[MAX_UNCOMPRESSED_BUFFER_SIZE];
 
         ConnectionState = AudionetConnectionState.Disconnected;
-        if (RaviSession == null) {
-            CreateRaviSession();
-        }
-        RaviSession.SessionStateChangedEvent += OnRaviSessionStateChanged;
+        ConnectionConfig = new HiFiConnectionAndTimeoutConfig();
 
         UserData = new UserDataWrapper();
         _lastUserData = new OutgoingAudioAPIData();
@@ -331,7 +359,6 @@ public class HiFiCommunicator : MonoBehaviour {
     }
 
     void Start() {
-        _userDataUpdateExpiry = DateTime.Now;
     }
 
     void Update() {
@@ -371,6 +398,81 @@ public class HiFiCommunicator : MonoBehaviour {
             PeerDisconnectedEvent?.Invoke(deletedVisitIds);
         }
 
+        // retry/reconnection logic here
+        long now = DateTimeOffset.Now.Ticks;
+        if (ConnectionState == AudionetConnectionState.Unavailable) {
+            // the destination server is full --> fallback to retry/reconnect strategy
+            if (_neverConnected) {
+                // we have not yet successfully connected
+                if (ConnectionConfig.AutoRetryConnection && now < _connectingExpiry) {
+                    // and we're configured to retry
+                    _attemptExpiry = 0;
+                    _nextAttempt = THE_DISTANT_FUTURE;
+                    UpdateState(AudionetConnectionState.Connecting);
+                }
+            } else if (ConnectionConfig.AutoReconnect) {
+                // we've successfully connected at least once before
+                // and we're configured to try to reconnect
+                if (_reconnectingExpiry == 0) {
+                    // this is a fresh reconnection attempt
+                    _reconnectingExpiry = now + ConnectionConfig.ReconnectionTimeout * TICKS_PER_SECOND;
+                    _attemptExpiry = 0;
+                    UpdateState(AudionetConnectionState.Reconnecting);
+                } else if (now > _reconnectingExpiry) {
+                    // we're giving up reconnecting
+                    // disable future attempts and fail
+                    _attemptExpiry = THE_DISTANT_FUTURE;
+                    _nextAttempt = THE_DISTANT_FUTURE;
+                    UpdateState(AudionetConnectionState.Failed);
+                } else {
+                    // this series of reconnection attempts have not yet expired
+                    _attemptExpiry = 0;
+                    _nextAttempt = THE_DISTANT_FUTURE;
+                    UpdateState(AudionetConnectionState.Reconnecting);
+                }
+            }
+        }
+        if (ConnectionState == AudionetConnectionState.Connecting
+                || ConnectionState == AudionetConnectionState.Reconnecting)
+        {
+            // update next attempt
+
+            // The first two checks are for total timeouts of connect/reconnect
+            if (ConnectionState == AudionetConnectionState.Connecting && now > _connectingExpiry) {
+                // we're giving up retrying
+                // disable future attempts and go straight to true fail
+                _attemptExpiry = THE_DISTANT_FUTURE;
+                _nextAttempt = THE_DISTANT_FUTURE;
+                UpdateState(AudionetConnectionState.Failed);
+                DestroySession();
+            } else if (ConnectionState == AudionetConnectionState.Reconnecting && now > _reconnectingExpiry) {
+                // we're giving up reconnecting
+                // disable future attempts and go straight to true fail
+                _attemptExpiry = THE_DISTANT_FUTURE;
+                _nextAttempt = THE_DISTANT_FUTURE;
+                UpdateState(AudionetConnectionState.Failed);
+                DestroySession();
+            } else {
+                // The last two checks are for starting/stopping each attempt.
+                // In the event of constant failures the logic is designed oscillate between
+                // one expiry and then the other until the total timeout expires above.
+                if (now > _attemptExpiry) {
+                    // stop this attempt
+                    _attemptExpiry = THE_DISTANT_FUTURE;
+                    _nextAttempt = now + ConnectionConfig.ConnectionDelayMs * TICKS_PER_MSEC;
+                    DestroySession();
+                } else if (now > _nextAttempt) {
+                    // start a new attempt
+                    _attemptExpiry = now + ConnectionConfig.ConnectionTimeoutMs * TICKS_PER_MSEC;
+                    _nextAttempt = THE_DISTANT_FUTURE;
+                    // In theory: it should be impossible to reach this context with a valid _connection
+                    // but just in case: we call DestroySession() right before CreateSession().
+                    DestroySession();
+                    CreateSession();
+                }
+            }
+        }
+
         if (ConnectionState != AudionetConnectionState.Connected) {
             return;
         }
@@ -379,18 +481,30 @@ public class HiFiCommunicator : MonoBehaviour {
             return;
         }
 
-        DateTime now = DateTime.Now;
         if (now < _userDataUpdateExpiry) {
             // do nothing yet
             return;
         }
-        _userDataUpdateExpiry.AddMilliseconds(_userDataUpdatePeriod);
+        _userDataUpdateExpiry += _userDataUpdatePeriod * TICKS_PER_MSEC;
         if (_userDataUpdateExpiry < now) {
-            _userDataUpdateExpiry = now.AddMilliseconds(_userDataUpdatePeriod);
+            _userDataUpdateExpiry = now + _userDataUpdatePeriod * TICKS_PER_MSEC;
         }
 
         UserData.hasChanged = false;
         TransmitHiFiAudioAPIDataToServer();
+    }
+
+    void ClearPeerData() {
+        lock (_peerDataMap) {
+            foreach (var item in _peerKeyMap) {
+                _deletedVisitIds.Add(item.Key);
+            }
+            _changedPeerKeys.Clear();
+            _peerKeyMap.Clear();
+            _peerDataMap.Clear();
+            _peerDataHasChanged = false;
+            _peersHaveDisconnected = true;
+        }
     }
 
     // for debug purposes
@@ -404,6 +518,7 @@ public class HiFiCommunicator : MonoBehaviour {
     }
 
     void OnDestroy() {
+        RaviUtil.DisposeWebRTC();
     }
 
     /// <summary>
@@ -418,17 +533,25 @@ public class HiFiCommunicator : MonoBehaviour {
             UpdateState(AudionetConnectionState.Disconnected);
         }
         if (ConnectionState == AudionetConnectionState.Disconnected) {
-            UpdateState(AudionetConnectionState.Signaling);
-            SanityCheckSignalingServiceUrl();
+            DestroySession();
 
-            // RaviSession.Connect expects the the full URL with JWT token on the end
-            string signalUrl = SignalingServiceUrl + "?token=" + JWT;
-            RaviSession.Connect(signalUrl);
+            long now = DateTimeOffset.Now.Ticks;
+            if (_connectingExpiry == 0) {
+                // this is our first attempt to connect
+                // and this is the only place where we set _connectingExpiry non-zero
+                long try_period = 5; // seconds
+                if (ConnectionConfig.RetryConnectionTimeout > try_period) {
+                    try_period = ConnectionConfig.RetryConnectionTimeout;
+                }
+                _connectingExpiry = now + try_period * TICKS_PER_SECOND;
+                Log.UncommonEvent(this, "ConnectToHiFiAudioAPIServer _connectingExpiry={0}", _connectingExpiry);
+                UpdateState(AudionetConnectionState.Connecting);
+            } else {
+                _reconnectingExpiry = now + ConnectionConfig.ReconnectionTimeout * TICKS_PER_SECOND;
+                UpdateState(AudionetConnectionState.Reconnecting);
+            }
 
-            // add command handlers
-            RaviSession.CommandController.AddCommandHandler("audionet.init", HandleAudionetInit);
-            RaviSession.CommandController.AddCommandHandler("audionet.personal_volume_adjust", HandlePersonalVolumeAdjust);
-            RaviSession.CommandController.BinaryCommandHandler = HandleAudionetBinaryData;
+            CreateSession();
         }
     }
 
@@ -436,8 +559,19 @@ public class HiFiCommunicator : MonoBehaviour {
     /// Disconnect from HiFi Spatial Audio Service.
     /// </summary>
     public void DisconnectFromHiFiAPIServer() {
-        RaviSession.Close();
-        RemoveRaviSessionHandlers();
+        if (ConnectionState != AudionetConnectionState.Disconnecting
+                && ConnectionState != AudionetConnectionState.Disconnected)
+        {
+            if (RaviSession != null) {
+                // we close the RaviSession and expect it to eventually change state
+                // and when we get the callback we'll change our own state to Disconnected
+                // TODO?: add timout just in case RaviSession doesn't change state?
+                UpdateState(AudionetConnectionState.Disconnecting);
+                RaviSession.Close();
+            } else {
+                UpdateState(AudionetConnectionState.Disconnected);
+            }
+        }
     }
 
     /// <summary>
@@ -461,7 +595,7 @@ public class HiFiCommunicator : MonoBehaviour {
     /// <param name="gain">Float value in range [0,1].</param>
     /// <returns>True if request was sent to HiFi Spatial Audio Service.</returns>
     public bool SetOtherUserGainForThisConnection(string visitIdHash, float gain) {
-        Log.Debug(this, "SendOtherUserGainForThisConnection id='{}' gain={}", visitIdHash, gain);
+        Log.Debug(this, "SendOtherUserGainForThisConnection id='{0}' gain={1}", visitIdHash, gain);
         if (ConnectionState == AudionetConnectionState.Connected) {
             JSONNode payload = new JSONObject();
             payload["visit_id_hash"] = visitIdHash;
@@ -479,11 +613,6 @@ public class HiFiCommunicator : MonoBehaviour {
         RaviSession.CommandController.RemoveCommandHandler("audionet.init");
         RaviSession.CommandController.RemoveCommandHandler("audionet.personal_volume_adjust");
         RaviSession.CommandController.BinaryCommandHandler = null;
-    }
-
-    void CreateRaviSession() {
-        Log.UncommonEvent(this, "CreateRaviSession");
-        RaviSession = gameObject.AddComponent<RaviSession>() as RaviSession;
     }
 
     void SanityCheckSignalingServiceUrl() {
@@ -504,10 +633,116 @@ public class HiFiCommunicator : MonoBehaviour {
         }
     }
 
+    void FailOrScheduleNextAttempt() {
+        long now = DateTimeOffset.Now.Ticks;
+        if (ConnectionState == AudionetConnectionState.Disconnected) {
+            // nothing to do
+        } else if (ConnectionState == AudionetConnectionState.Disconnecting) {
+            // we probably initiated a shutdown and it has happened
+            UpdateState(AudionetConnectionState.Disconnected);
+        } else if (_neverConnected) {
+            // we have not yet successfully connected
+            if (now > _connectingExpiry) {
+                // we're giving up retrying
+                // disable future attempts and fail
+                _attemptExpiry = THE_DISTANT_FUTURE;
+                _nextAttempt = THE_DISTANT_FUTURE;
+                UpdateState(AudionetConnectionState.Failed);
+            } else {
+                // we're not done trying so we set an expiry to try again
+                if (now < _attemptExpiry) {
+                    // we clear _attemptExpiry
+                    // which will cause the retry logic to start again at next update()
+                    _attemptExpiry = 0;
+                }
+                UpdateState(AudionetConnectionState.Connecting);
+            }
+        } else if (ConnectionConfig.AutoReconnect) {
+            // we've successfully connected at least once before
+            // and we're configured to try to reconnect
+            if (_reconnectingExpiry == 0) {
+                // this is a fresh reconnection attempt
+                _reconnectingExpiry = now + ConnectionConfig.ReconnectionTimeout * TICKS_PER_SECOND;
+                _attemptExpiry = 0;
+                UpdateState(AudionetConnectionState.Reconnecting);
+            } else {
+                if (now > _reconnectingExpiry) {
+                    // we're giving up reconnecting
+                    // disable future attempts and fail
+                    _attemptExpiry = THE_DISTANT_FUTURE;
+                    _nextAttempt = THE_DISTANT_FUTURE;
+                    UpdateState(AudionetConnectionState.Failed);
+                } else {
+                    // this series of reconnection attempts have not yet expired
+                    _attemptExpiry = 0;
+                    // we should already be in Reconnecting state
+                    // but set it again Reconnecting here, just in case
+                    // (it is a no-op if already there)
+                    UpdateState(AudionetConnectionState.Reconnecting);
+                }
+            }
+        } else {
+            // we're not configured to reconnect
+            // disable future attempts and fail
+            _attemptExpiry = THE_DISTANT_FUTURE;
+            _nextAttempt = THE_DISTANT_FUTURE;
+            UpdateState(AudionetConnectionState.Failed);
+        }
+    }
+
+    void DestroySession() {
+        if (RaviSession != null) {
+            RaviSession.CommandController.RemoveCommandHandler("audionet.init");
+            RaviSession.CommandController.RemoveCommandHandler("audionet.personal_volume_adjust");
+            RaviSession.CommandController.BinaryCommandHandler = null;
+            Destroy(RaviSession);
+            RaviSession = null;
+        }
+    }
+
+    void CreateSession() {
+        RaviSession = gameObject.AddComponent<RaviSession>() as RaviSession;
+        RaviSession.SessionStateChangedEvent += OnRaviSessionStateChanged;
+
+        SanityCheckSignalingServiceUrl();
+
+        // RaviSession.Connect expects the the full URL with JWT token on the end
+        string signalUrl = SignalingServiceUrl + "?token=" + JWT;
+        RaviSession.Connect(signalUrl);
+
+        // add command handlers
+        RaviSession.CommandController.AddCommandHandler("audionet.init", HandleAudionetInit);
+        RaviSession.CommandController.AddCommandHandler("audionet.personal_volume_adjust", HandlePersonalVolumeAdjust);
+        RaviSession.CommandController.BinaryCommandHandler = HandleAudionetBinaryData;
+    }
+
     void UpdateState(AudionetConnectionState newState) {
         if (ConnectionState != newState) {
-            if (newState == AudionetConnectionState.Failed) {
-                RemoveRaviSessionHandlers();
+            switch (newState) {
+                case AudionetConnectionState.Connected:
+                    _neverConnected = false;
+                    if (ConnectionState == AudionetConnectionState.Reconnecting) {
+                        ClearPeerData();
+                    }
+                    break;
+                case AudionetConnectionState.Reconnecting:
+                    // Note: we don't ClearPeerData() here.  Instead we wait until the last minute
+                    // (e.g. when transitioning from Reconnecting to Connected).
+                    break;
+                case AudionetConnectionState.Failed:
+                    if (RaviSession != null) {
+                        RaviSession.Close();
+                    }
+                    ClearPeerData();
+                    break;
+                case AudionetConnectionState.Disconnected:
+                    ClearPeerData();
+                    // reset these to allow for fresh connection logic
+                    _connectingExpiry = 0;
+                    _neverConnected = true;
+                    break;
+                default:
+                    break;
             }
             Log.UncommonEvent(this, "UpdateState: '{0}'-->'{1}'", ConnectionState, newState);
             ConnectionState = newState;
@@ -519,9 +754,6 @@ public class HiFiCommunicator : MonoBehaviour {
     bool SendAudionetInit() {
         Log.Debug(this, "SendAudionetInit");
         if (RaviSession != null && RaviSession.CommandController != null) {
-            if (ConnectionState == AudionetConnectionState.Failed) {
-                UpdateState(AudionetConnectionState.Disconnected);
-            }
             JSONNode payload = new JSONObject();
             payload["primary"] = true;
             payload["visit_id"] = RaviSession.SessionId;
@@ -532,7 +764,6 @@ public class HiFiCommunicator : MonoBehaviour {
             bool INPUT_AUDIO_IS_STEREO = false;
             payload["is_input_stream_stereo"] = INPUT_AUDIO_IS_STEREO;
 
-            UpdateState(AudionetConnectionState.Connecting);
             Log.UncommonEvent(this, "SEND audionet.init");
             bool success = RaviSession.CommandController.SendCommand("audionet.init", payload);
             if (!success) {
@@ -565,7 +796,9 @@ public class HiFiCommunicator : MonoBehaviour {
     void HandleAudionetInit(string msg) {
         Log.UncommonEvent(this, "HandleAudionetInit RECV audionet.init response msg='{0}'", msg);
         try {
-            if (ConnectionState == AudionetConnectionState.Connecting) {
+            if (ConnectionState == AudionetConnectionState.Connecting
+                    || ConnectionState == AudionetConnectionState.Reconnecting)
+            {
                 JSONNode obj = JSONNode.Parse(msg);
                 _mixerInfo.buildNumber = obj["build_number"];
                 _mixerInfo.buildType = obj["build_type"];
@@ -573,11 +806,20 @@ public class HiFiCommunicator : MonoBehaviour {
                 // Note: _mixerInfo.visitIdHash can be used to figure out which of the "peers" data
                 // corresponds to our current HiFiSession when using UserDataScope=All
                 _mixerInfo.visitIdHash = obj["visit_id_hash"];
-                _mixerInfo.visitId = RaviSession.SessionId;
+                _mixerInfo.userId = obj["user_id"];
 
-                UpdateState(AudionetConnectionState.Connected);
+                bool success = obj["success"];
+                if (success) {
+                    _mixerInfo.visitId = RaviSession.SessionId;
+                    UpdateState(AudionetConnectionState.Connected);
+                    _nextAttempt = THE_DISTANT_FUTURE;
+                    _reconnectingExpiry = 0;
+                } else {
+                    FailOrScheduleNextAttempt();
+                }
             } else {
                 Log.Warning(this, "HandleAudionetInit RECV audionet.init response with unexpected connectionState='{0}'", ConnectionState);
+                FailOrScheduleNextAttempt();
             }
         } catch (Exception e) {
             Log.Error(this, "HandleAudionetInit failed to parse message='{0}' err='{1}'", msg, e.Message);
@@ -673,12 +915,40 @@ public class HiFiCommunicator : MonoBehaviour {
     }
 
     void OnRaviSessionStateChanged(RaviSession.SessionState state) {
-        if (state == RaviSession.SessionState.Connected) {
-            bool success = SendAudionetInit();
-            if (!success) {
-                // TODO?: is there a way to recover from this?  Do we care?
-                UpdateState(AudionetConnectionState.Failed);
-            }
+        Log.UncommonEvent(this, "OnRaviSessionStateChanged state={0} session_state={1}", ConnectionState, state);
+
+        switch (state) {
+            case RaviSession.SessionState.Connected:
+                // nothing to do yet: we're waiting for ConnectedWithBothDataChannels
+                break;
+            case RaviSession.SessionState.ConnectedWithBothDataChannels:
+                if (ConnectionState == AudionetConnectionState.Connecting
+                        || ConnectionState == AudionetConnectionState.Reconnecting)
+                {
+                    // at this point the Session is ready for us to "login"
+                    // so we send the auidionet.init message and when that comes back
+                    // we'll transition to Connected
+                    bool success = SendAudionetInit();
+                    if (!success) {
+                        UpdateState(AudionetConnectionState.Failed);
+                    }
+                }
+                break;
+            case RaviSession.SessionState.Disconnected:
+            case RaviSession.SessionState.Failed:
+            case RaviSession.SessionState.Closed:
+            case RaviSession.SessionState.Closing:
+                if (ConnectionState == AudionetConnectionState.Connecting
+                        || ConnectionState == AudionetConnectionState.Connected)
+                {
+                    FailOrScheduleNextAttempt();
+                }
+                break;
+            case RaviSession.SessionState.Unavailable:
+                UpdateState(AudionetConnectionState.Unavailable);
+                break;
+            default:
+                break;
         }
     }
 }
