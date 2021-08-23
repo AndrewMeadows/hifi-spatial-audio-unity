@@ -212,7 +212,7 @@ public class HiFiCommunicator : MonoBehaviour {
     [Tooltip("Json Web Token (client/server identification, and session info)")]
     public string JWT;
 
-    RaviSession RaviSession;
+    RaviSession _raviSession;
 
     long _userDataUpdatePeriod = 50; // msec, 20 Hz
 
@@ -562,12 +562,12 @@ public class HiFiCommunicator : MonoBehaviour {
         if (ConnectionState != AudionetConnectionState.Disconnecting
                 && ConnectionState != AudionetConnectionState.Disconnected)
         {
-            if (RaviSession != null) {
-                // we close the RaviSession and expect it to eventually change state
+            if (_raviSession != null) {
+                // we close the _raviSession and expect it to eventually change state
                 // and when we get the callback we'll change our own state to Disconnected
-                // TODO?: add timout just in case RaviSession doesn't change state?
+                // TODO?: add timout just in case _raviSession doesn't change state?
                 UpdateState(AudionetConnectionState.Disconnecting);
-                RaviSession.Close();
+                _raviSession.Close();
             } else {
                 UpdateState(AudionetConnectionState.Disconnected);
             }
@@ -600,7 +600,7 @@ public class HiFiCommunicator : MonoBehaviour {
             JSONNode payload = new JSONObject();
             payload["visit_id_hash"] = visitIdHash;
             payload["gain"] = gain;
-            bool success = RaviSession.CommandController.SendCommand("audionet.personal_volume_adjust", payload);
+            bool success = _raviSession.CommandController.SendCommand("audionet.personal_volume_adjust", payload);
             if (!success) {
                 Log.Warning(this, "SEND audionet.personal_volume_adjust failed");
             }
@@ -610,9 +610,9 @@ public class HiFiCommunicator : MonoBehaviour {
     }
 
     void RemoveRaviSessionHandlers() {
-        RaviSession.CommandController.RemoveCommandHandler("audionet.init");
-        RaviSession.CommandController.RemoveCommandHandler("audionet.personal_volume_adjust");
-        RaviSession.CommandController.BinaryCommandHandler = null;
+        _raviSession.CommandController.RemoveCommandHandler("audionet.init");
+        _raviSession.CommandController.RemoveCommandHandler("audionet.personal_volume_adjust");
+        _raviSession.CommandController.BinaryCommandHandler = null;
     }
 
     void SanityCheckSignalingServiceUrl() {
@@ -691,29 +691,29 @@ public class HiFiCommunicator : MonoBehaviour {
     }
 
     void DestroySession() {
-        if (RaviSession != null) {
-            RaviSession.CommandController.RemoveCommandHandler("audionet.init");
-            RaviSession.CommandController.RemoveCommandHandler("audionet.personal_volume_adjust");
-            RaviSession.CommandController.BinaryCommandHandler = null;
-            Destroy(RaviSession);
-            RaviSession = null;
+        if (_raviSession != null) {
+            _raviSession.CommandController.RemoveCommandHandler("audionet.init");
+            _raviSession.CommandController.RemoveCommandHandler("audionet.personal_volume_adjust");
+            _raviSession.CommandController.BinaryCommandHandler = null;
+            Destroy(_raviSession);
+            _raviSession = null;
         }
     }
 
     void CreateSession() {
-        RaviSession = gameObject.AddComponent<RaviSession>() as RaviSession;
-        RaviSession.SessionStateChangedEvent += OnRaviSessionStateChanged;
+        _raviSession = gameObject.AddComponent<RaviSession>() as RaviSession;
+        _raviSession.SessionStateChangedEvent += OnRaviSessionStateChanged;
 
         SanityCheckSignalingServiceUrl();
 
-        // RaviSession.Connect expects the the full URL with JWT token on the end
+        // _raviSession.Connect expects the the full URL with JWT token on the end
         string signalUrl = SignalingServiceUrl + "?token=" + JWT;
-        RaviSession.Connect(signalUrl);
+        _raviSession.Connect(signalUrl);
 
         // add command handlers
-        RaviSession.CommandController.AddCommandHandler("audionet.init", HandleAudionetInit);
-        RaviSession.CommandController.AddCommandHandler("audionet.personal_volume_adjust", HandlePersonalVolumeAdjust);
-        RaviSession.CommandController.BinaryCommandHandler = HandleAudionetBinaryData;
+        _raviSession.CommandController.AddCommandHandler("audionet.init", HandleAudionetInit);
+        _raviSession.CommandController.AddCommandHandler("audionet.personal_volume_adjust", HandlePersonalVolumeAdjust);
+        _raviSession.CommandController.BinaryCommandHandler = HandleAudionetBinaryData;
     }
 
     void UpdateState(AudionetConnectionState newState) {
@@ -730,9 +730,7 @@ public class HiFiCommunicator : MonoBehaviour {
                     // (e.g. when transitioning from Reconnecting to Connected).
                     break;
                 case AudionetConnectionState.Failed:
-                    if (RaviSession != null) {
-                        RaviSession.Close();
-                    }
+                    _raviSession?.Close();
                     ClearPeerData();
                     break;
                 case AudionetConnectionState.Disconnected:
@@ -753,11 +751,11 @@ public class HiFiCommunicator : MonoBehaviour {
 
     bool SendAudionetInit() {
         Log.Debug(this, "SendAudionetInit");
-        if (RaviSession != null && RaviSession.CommandController != null) {
+        if (_raviSession != null && _raviSession.CommandController != null) {
             JSONNode payload = new JSONObject();
             payload["primary"] = true;
-            payload["visit_id"] = RaviSession.SessionId;
-            payload["session"] = RaviSession.SessionId;
+            payload["visit_id"] = _raviSession.SessionId;
+            payload["session"] = _raviSession.SessionId;
             payload["streaming_scope"] = UserDataScopeStrings[(int) UserDataStreamingScope];
             // stereo upload to HiFi Spatial Audio Service is an experimental feature
             // and is not supported in Unity yet.
@@ -765,14 +763,14 @@ public class HiFiCommunicator : MonoBehaviour {
             payload["is_input_stream_stereo"] = INPUT_AUDIO_IS_STEREO;
 
             Log.UncommonEvent(this, "SEND audionet.init");
-            bool success = RaviSession.CommandController.SendCommand("audionet.init", payload);
+            bool success = _raviSession.CommandController.SendCommand("audionet.init", payload);
             if (!success) {
                 Log.Warning(this, "SEND audionet.init failed");
                 UpdateState(AudionetConnectionState.Failed);
             }
             return success;
         }
-        Log.Error(this, "SendAudionetInit failed for null RaviSession or CommandController");
+        Log.Error(this, "SendAudionetInit failed for null _raviSession or CommandController");
         return false;
     }
 
@@ -787,7 +785,7 @@ public class HiFiCommunicator : MonoBehaviour {
         }
         AudioAPIDataChanges changes = _lastUserData.ApplyAndGetChanges(data);
         if (!changes.IsEmpty()) {
-            return RaviSession.CommandController.SendInput(changes.ToWireFormattedJsonString());
+            return _raviSession.CommandController.SendInput(changes.ToWireFormattedJsonString());
         }
         // although we didn't send anything, consider this success
         return true;
@@ -810,7 +808,7 @@ public class HiFiCommunicator : MonoBehaviour {
 
                 bool success = obj["success"];
                 if (success) {
-                    _mixerInfo.visitId = RaviSession.SessionId;
+                    _mixerInfo.visitId = _raviSession.SessionId;
                     UpdateState(AudionetConnectionState.Connected);
                     _nextAttempt = THE_DISTANT_FUTURE;
                     _reconnectingExpiry = 0;
