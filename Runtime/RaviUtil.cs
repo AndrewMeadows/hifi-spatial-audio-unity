@@ -14,11 +14,7 @@ public static class RaviUtil {
             // We're not using video tracks so we hard-code the video codec type
             // as 'Software'.  To send 'Hardware' when not available may cause
             // Unity to crash.
-            // Also, we want 'directAudio' straight to the platform's default
-            // audio device rather than through Unity's audio pipeline.
-            // This last argument is not available in Unity's official plugin yet:
-            // it relies on our own patch.
-            WebRTC.Initialize(type:EncoderType.Software, directAudio:true);
+            WebRTC.Initialize(type:EncoderType.Software);
             return true;
         }
         return false;
