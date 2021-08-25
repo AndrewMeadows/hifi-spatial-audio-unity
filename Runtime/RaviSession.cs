@@ -58,7 +58,7 @@ public class RaviSession : MonoBehaviour {
     /// <summary>
     /// The microphone device name to use as input for webrtc audio track.
     /// </summary>
-    public string MicrophoneDeviceName {
+    public string InputAudioDeviceName {
         set {
             // we assume we've been given a valid device name
             // and don't bother to sanity-check it
