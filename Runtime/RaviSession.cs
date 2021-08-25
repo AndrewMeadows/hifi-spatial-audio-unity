@@ -55,7 +55,21 @@ public class RaviSession : MonoBehaviour {
     // TODO?: get rid of the CommandController abstraction and move its behavior to this class
     public RaviCommandController CommandController { get; internal set; }
 
+    /// <summary>
+    /// The microphone device name to use as input for webrtc audio track.
+    /// </summary>
+    public string MicrophoneDeviceName {
+        set {
+            // we assume we've been given a valid device name
+            // and don't bother to sanity-check it
+            _microphoneDeviceName = value;
+        }
+        get {
+            return _microphoneDeviceName;
+        }
+    }
     string _microphoneDeviceName = "Default Input Device";
+
     MediaStream _audioStream;
     AudioSource _sendAudioSource;
     AudioSource _receiveAudioSource;
