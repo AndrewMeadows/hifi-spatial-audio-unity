@@ -212,6 +212,23 @@ public class HiFiCommunicator : MonoBehaviour {
     [Tooltip("Json Web Token (client/server identification, and session info)")]
     public string JWT;
 
+    /// <summary>
+    /// Whether input audio is muted.
+    /// </summary>
+    public bool InputAudioMuted {
+        set {
+            if (_raviSession != null) {
+                _raviSession.InputAudioMuted = value;
+            }
+        }
+        get {
+            if (_raviSession != null) {
+                return _raviSession.InputAudioMuted;
+            }
+            return true;
+        }
+    }
+
     RaviSession _raviSession;
 
     long _userDataUpdatePeriod = 50; // msec, 20 Hz
@@ -326,7 +343,6 @@ public class HiFiCommunicator : MonoBehaviour {
     SortedSet<string> _changedPeerKeys;
     SortedSet<string> _deletedVisitIds;
 
-    bool _muteMic = false;
     OutgoingAudioAPIData _lastUserData;
 
     byte[] _uncompressedData;
@@ -593,20 +609,6 @@ public class HiFiCommunicator : MonoBehaviour {
     }
 
     /// <summary>
-    /// Mute/unmute local audio input to HiFi Spatial Audio Service.
-    /// </summary>
-    /// <param name="muted">True if audio should be muted, else false.</param>
-    public void SetInputAudioMuted(bool muted) {
-        if (_muteMic != muted) {
-            _muteMic = muted;
-            // BUG: Unity's webrtc plugin does not yet expose the ability to mute the mic
-            // WORKAROUND: on mute/unmute we adjust the hiFiGain and volumeThreshild submitted to Server
-            // to achieve server-side mute/unmute, which is why we need to flag UserData as changed
-            UserData.hasChanged = true;
-        }
-    }
-
-    /// <summary>
     /// Adjust the volume of a peer's audio for this user.
     /// </summary>
     /// <param name="visitIdHash">Unique string for target user.</param>
@@ -794,15 +796,7 @@ public class HiFiCommunicator : MonoBehaviour {
     }
 
     bool TransmitHiFiAudioAPIDataToServer() {
-        // BUG: Unity's webrtc plugin does not yet expose the ability to mute the mic
-        // WORKAROUND: when muted we slam the hiFiGain and volumeThreshold submitted to the Server
-        // to achieve server-side mute
-        OutgoingAudioAPIData data = UserData.data.DeepCopy();
-        if (_muteMic) {
-            data.hiFiGain = 0.0f;
-            data.volumeThreshold = 0.0f;
-        }
-        AudioAPIDataChanges changes = _lastUserData.ApplyAndGetChanges(data);
+        AudioAPIDataChanges changes = _lastUserData.ApplyAndGetChanges(UserData.data);
         if (!changes.IsEmpty()) {
             return _raviSession.CommandController.SendInput(changes.ToWireFormattedJsonString());
         }

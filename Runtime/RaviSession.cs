@@ -62,13 +62,21 @@ public class RaviSession : MonoBehaviour {
         set {
             // we assume we've been given a valid device name
             // and don't bother to sanity-check it
-            _microphoneDeviceName = value;
+            if (value != _microphoneDeviceName) {
+                Debug.Log("TODO: implement RaviSession.InputAudioDeviceName.set()");
+                /*
+                ReleaseInputAudio();
+                _microphoneDeviceName = value;
+                CaptureInputAudio();
+                */
+            }
         }
         get {
             return _microphoneDeviceName;
         }
     }
-    string _microphoneDeviceName = "Default Input Device";
+    //string _microphoneDeviceName = "Default Input Device";
+    string _microphoneDeviceName = "Built-in Audio Analog Stereo";
 
     MediaStream _audioStream;
     AudioSource _sendAudioSource;
@@ -76,48 +84,25 @@ public class RaviSession : MonoBehaviour {
     AudioClip _micClip;
     AudioStreamTrack _sendTrack;
     List<RTCRtpSender> _rtpSenders;
+    bool _muteInputAudio = false;
 
-    public RaviSession() {
+    void Awake() {
+        Log.Debug(this, "Awake");
+        // Note: we split the initialization code between Awake() and Start().
+        // Important components that must be established early to avoid null
+        // dereferences go here in Awake() while other stuff (with defaults
+        // overridden via external logic immediately after construction) is
+        // in Start().
+
+        _sendAudioSource = gameObject.AddComponent<AudioSource>() as AudioSource;
+        _receiveAudioSource = gameObject.AddComponent<AudioSource>() as AudioSource;
+
         State = SessionState.Closed;
         CommandController = new RaviCommandController();
         CommandController.OnOpen += OnCommandControllerOpen;
         CommandController.OnClose += OnCommandControllerClose;
-    }
 
-    void Awake() {
-        CreatePeerConnection();
-
-        // pick a SessionId if we don't already have one
-        if (string.IsNullOrEmpty(SessionId)) {
-            SessionId = Guid.NewGuid().ToString();
-        } else {
-            try {
-                Guid id = Guid.Parse(SessionId);
-            } catch (FormatException) {
-                Log.Warning(this, "cowardly refusing to use SessionId='{0}'", SessionId);
-                // create a fresh uuid
-                SessionId = Guid.NewGuid().ToString();
-                Log.UncommonEvent(this, "new SessionId='{0}'", SessionId);
-            }
-        }
-
-        // create Signaler if we don't already have one
-        if (Signaler == null) {
-            Signaler = gameObject.AddComponent<RaviSignaler>() as RaviSignaler;
-        }
-
-        // latch onto Signaler
-        Signaler.LocalPeerId = SessionId;
-        Signaler.PeerConnection = PeerConnection;
-        Signaler.SignalStateChangedEvent += OnSignalStateChanged;
-
-        _sendAudioSource = gameObject.AddComponent<AudioSource>() as AudioSource;
-        _receiveAudioSource = gameObject.AddComponent<AudioSource>() as AudioSource;
-    }
-
-    void CreatePeerConnection() {
-        Log.Debug(this, "CreatePeerConnection");
-
+        // create PeerConnection
         // we start with a default RtcConfiguration
         // but the Signaler expects to receive an updated config on session start
         RTCConfiguration defaultRtcConfig = default;
@@ -132,30 +117,42 @@ public class RaviSession : MonoBehaviour {
         };
         PeerConnection = new RTCPeerConnection(ref defaultRtcConfig);
 
-        // latch onto PeerConnection
-        PeerConnection.OnConnectionStateChange = OnConnectionStateChange;
-        PeerConnection.OnDataChannel = CommandController.OnDataChannel;
-        PeerConnection.OnTrack = OnTrack;
+        // pick a SessionId if not already set
+        if (string.IsNullOrEmpty(SessionId)) {
+            SessionId = Guid.NewGuid().ToString();
+        } else {
+            try {
+                Guid id = Guid.Parse(SessionId);
+            } catch (FormatException) {
+                Log.Warning(this, "cowardly refusing to use SessionId='{0}'", SessionId);
+                // create a fresh uuid
+                SessionId = Guid.NewGuid().ToString();
+                Log.UncommonEvent(this, "new SessionId='{0}'", SessionId);
+            }
+        }
 
-        AddAudioCaptureTracks();
+        // create Signaler
+        if (Signaler == null) {
+            Signaler = gameObject.AddComponent<RaviSignaler>() as RaviSignaler;
+        }
+
+        // latch onto Signaler
+        Signaler.LocalPeerId = SessionId;
+        Signaler.PeerConnection = PeerConnection;
+        Signaler.SignalStateChangedEvent += OnSignalStateChanged;
     }
 
-    void AddAudioCaptureTracks() {
-        _micClip = Microphone.Start(_microphoneDeviceName, true, 1, 48000);
+    void Start() {
+        Log.Debug(this, "Start");
+        // This initialization stuff lives in Start() with the expectation: any
+        // properties needing non-default values (e.g. InputAudioDeviceName)
+        // have already been set by external logic.  The motivation here is to
+        // avoid unnecessary construction-deconstruction thrash when using
+        // non-defaults.
 
-        // set the latency to “0” samples before the audio starts to play.
-        while (!(Microphone.GetPosition(_microphoneDeviceName) > 0)) {}
+        CaptureInputAudio();
 
-        // This is how we feed audio to webrtc: we create an AudioSource
-        // that loops on the _micClip and set it playing.
-        _sendAudioSource.clip = _micClip;
-        _sendAudioSource.loop = true;
-        _sendAudioSource.Play();
-
-        // we mute _sendAudioSource so that it doesn't echo sound into the world
-        // (e.g. audio data still reaches the webrtc stream but not the world)
-        _sendAudioSource.mute = true;
-
+        // add audio track
         _audioStream = new MediaStream();
         _sendTrack = new AudioStreamTrack(_sendAudioSource);
         _rtpSenders = new List<RTCRtpSender>();
@@ -163,8 +160,14 @@ public class RaviSession : MonoBehaviour {
         if (sender != null) {
             _rtpSenders.Add(sender);
         }
+        _sendTrack.Enabled = !_muteInputAudio;
 
-        /* TODO: set parameters on codec to get these into the sdp Answer fmtp field
+        // latch onto PeerConnection
+        PeerConnection.OnConnectionStateChange = OnConnectionStateChange;
+        PeerConnection.OnDataChannel = CommandController.OnDataChannel;
+        PeerConnection.OnTrack = OnTrack;
+
+        /* TODO?: set parameters on codec to get these into the sdp Answer fmtp field
          * instead of relying on RaviSignaler to hack them into place.
         PreferredAudioCodec = "opus";
         PreferredAudioCodecExtraParamsRemote = "maxaveragebitrate=128000;sprop-stereo=1;stereo=1";
@@ -172,7 +175,23 @@ public class RaviSession : MonoBehaviour {
          */
     }
 
+    void Update() {
+    }
+
+    void OnDestroy() {
+        Microphone.End(_microphoneDeviceName);
+        _audioStream?.Dispose();
+        _audioStream = null;
+        _sendTrack?.Dispose();
+        _audioStream = null;
+        Destroy(_micClip);
+        _micClip = null;
+        PeerConnection?.Dispose();
+        PeerConnection = null;
+    }
+
     void OnAudioReceived(AudioClip renderer) {
+        Log.Debug(this "OnAudioReceived");
         // This is only called once when the track is established.
         // We attach the clip to _receiveAudioSource and set it playing.
         _receiveAudioSource.clip = renderer;
@@ -263,30 +282,11 @@ public class RaviSession : MonoBehaviour {
     }
 
     void OnTrack(RTCTrackEvent e) {
-        // fired when something about the track changes
+        // fired when something about a track changes
         var track = e.Track as AudioStreamTrack;
         track.OnAudioReceived += OnAudioReceived;
         RTCRtpTransceiver transceiver = e.Transceiver;
         Log.UncommonEvent(this, "OnTrack transceiver.dir={0} enabled={1} kind={2}", transceiver.Direction, track.Enabled, track.Kind);
-    }
-
-    void Start() {
-    }
-
-    void Update() {
-    }
-
-    void OnDestroy() {
-        Microphone.End(_microphoneDeviceName);
-        RemoveAudioCaptureTracks();
-        _audioStream?.Dispose();
-        _audioStream = null;
-        _sendTrack?.Dispose();
-        _audioStream = null;
-        Destroy(_micClip);
-        _micClip = null;
-        PeerConnection?.Dispose();
-        PeerConnection = null;
     }
 
     /// <summary>
@@ -316,7 +316,9 @@ public class RaviSession : MonoBehaviour {
     /// Close connection to the WebRTC Signaler and PeerConnection
     /// </summary>
     public void Close() {
+        Log.UncommonEvent(this, "Close");
         UpdateState(SessionState.Closing);
+        RemoveAudioCaptureTracks();
         Signaler.Disconnect();
         PeerConnection.Close();
     }
@@ -341,6 +343,16 @@ public class RaviSession : MonoBehaviour {
         } else {
             Log.Error(this, "SendInput failed for null CommandController");
         }
+    }
+
+    public bool InputAudioMuted {
+        set {
+            _muteInputAudio = value;
+            if (_sendTrack != null) {
+                _sendTrack.Enabled = !_muteInputAudio;
+            }
+        }
+        get { return _muteInputAudio; }
     }
 
     IEnumerator ConnectInternal(string signalUrl) {
@@ -383,6 +395,47 @@ public class RaviSession : MonoBehaviour {
         if (state == RaviSignaler.SignalState.Unavailable) {
             UpdateState(SessionState.Unavailable);
         }
+    }
+
+    void CaptureInputAudio() {
+        Log.UncommonEvent(this, "CaptureInputAudio mic='{0}' mute={1}", _microphoneDeviceName, _muteInputAudio);
+        if (_micClip != null) {
+            return;
+        }
+        lock(_sendAudioSource) {
+            _micClip = Microphone.Start(_microphoneDeviceName, true, 1, 48000);
+            if (_micClip == null) {
+                Log.Warning(this, "CaptureInputAudio failed to start microphone='{}'", _microphoneDeviceName);
+            } else {
+                // set the latency to “0” samples before the audio starts to play.
+                while (!(Microphone.GetPosition(_microphoneDeviceName) > 0)) {}
+
+                // This is how we feed audio to webrtc: we create an AudioSource,
+                // loop it on _micClip, and set it playing.
+                _sendAudioSource.clip = _micClip;
+                _sendAudioSource.loop = true;
+                _sendAudioSource.Play();
+
+                // we mute _sendAudioSource to prevent it from echoing sound into
+                // the world (e.g. audio data still reaches the webrtc stream but
+                // not the world)
+                _sendAudioSource.mute = true;
+            }
+        }
+    }
+
+    void ReleaseInputAudio() {
+        // TODO: figure out how to do this
+        /*
+        if (_muteInputAudio) {
+            if (_micClip != null) {
+                Microphone.End(_microphoneDeviceName);
+                _sendAudioSource.Stop();
+                _sendAudioSource.clip = null;
+                Destroy(_micClip);
+                _micClip = null;
+            }
+        */
     }
 }
 
