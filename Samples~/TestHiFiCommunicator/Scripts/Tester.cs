@@ -18,36 +18,19 @@ public class Tester : MonoBehaviour {
     private float _orbitRadius = 1.0f;
     private double _updateUserDataPeriod = 0.050;
     private double _updateUserDataExpiry = 0.0;
+    private bool _muteTheMic = false;
 
-    void Start() {
-        Debug.Log("Tester.Start");
+    void Awake() {
+        Debug.Log("Tester.Awake");
 
-        // verify HiFiUrl and HiFiJwt
-        if (string.IsNullOrEmpty(HiFiUrl)) {
-            HiFiUrl = "wss://api.highfidelity.com:443/";
-        }
-        if (string.IsNullOrEmpty(HiFiJwt)) {
-            HiFiJwt = "get your own Java Web Token (JWT) from https://account.highfidelity.com/dev/account");
-        }
-        if (HiFiJwt == "get your own Java Web Token (JWT) from https://account.highfidelity.com/dev/account") {
-            Debug.Log("ERROR: this demo needs a valid JWT before it will work!");
-            QuitDemo();
-        }
-
-        #if USE_HIFI_COORDINATE_FRAME_UTIL
-        // When using HiFiCoordinateFrameUtil we must compute the transforms once,
-        // before trying to use them.
-        HiFi.HiFiCoordinateFrameUtil.ComputeTransforms2D();
-        #endif
+        //// debug: list all microphone devices
+        //foreach (var device in Microphone.devices) {
+        //    Debug.Log("debug microphone='" + device + "'");
+        //}
 
         // create the Communicator
         _communicator = gameObject.AddComponent<HiFi.HiFiCommunicator>() as HiFi.HiFiCommunicator;
-
-        // set misc Communicator config options
-        _communicator.SignalingServiceUrl = HiFiUrl;
-        _communicator.JWT = HiFiJwt;
         _communicator.InputAudioDeviceName = "Default Input Device";
-        _communicator.UserDataStreamingScope = HiFi.HiFiCommunicator.UserDataScope.All;
 
         // for this test we want to fail ASAP whenever there is a problem
         // so we configure the retry/reconnect logic to not try hard
@@ -61,6 +44,35 @@ public class Tester : MonoBehaviour {
         _communicator.PeerDataUpdatedEvent += HandlePeerChanges;
         _communicator.PeerDisconnectedEvent += HandlePeerDisconnects;
 
+        if (string.IsNullOrEmpty(HiFiUrl)) {
+            HiFiUrl = "wss://api.highfidelity.com:443/";
+        }
+        if (string.IsNullOrEmpty(HiFiJwt)) {
+            //HiFiJwt = "get your own Java Web Token (JWT) from https://account.highfidelity.com/dev/account");
+            HiFiJwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBfaWQiOiIxNTU3Zjg1Ny1kOWQ5LTRhYzctOGFjYy1hM2IwNmY2MDhhNmQiLCJ1c2VyX2lkIjoiYW5kcmV3Iiwic3BhY2VfaWQiOiI4YWNhZDk1ZS1mZWI2LTQwNzMtYjdjZi1iYTJmMDVmNzFlZTIiLCJzdGFjayI6ImF1ZGlvbmV0LW1peGVyLWFwaS1ob2JieS0wMSJ9.e4LpUo6WLGlKHquuwSjrxscZ31t5wtW-VnoH7IMS71w";
+        }
+
+        #if USE_HIFI_COORDINATE_FRAME_UTIL
+        // When using HiFiCoordinateFrameUtil we must compute the transforms once,
+        // before trying to use them.
+        HiFi.HiFiCoordinateFrameUtil.ComputeTransforms2D();
+        #endif
+    }
+
+    void Start() {
+        Debug.Log("Tester.Start");
+
+        // verify HiFiUrl and HiFiJwt
+        if (HiFiJwt == "get your own Java Web Token (JWT) from https://account.highfidelity.com/dev/account") {
+            Debug.Log("ERROR: this demo needs a valid JWT before it will work!");
+            QuitDemo();
+        }
+
+        // set misc Communicator config options
+        _communicator.SignalingServiceUrl = HiFiUrl;
+        _communicator.JWT = HiFiJwt;
+        _communicator.UserDataStreamingScope = HiFi.HiFiCommunicator.UserDataScope.All;
+
         // start the communicator
         _communicator.ConnectToHiFiAudioAPIServer();
 
@@ -70,8 +82,12 @@ public class Tester : MonoBehaviour {
     }
 
     void Update() {
-        if (Input.GetKeyUp("escape") || Input.GetAxis("Cancel") > 0.0f) {
+        if (Input.GetKeyUp(KeyCode.Escape) || Input.GetAxis("Cancel") > 0.0f) {
             QuitDemo();
+        }
+        if (Input.GetKeyUp(KeyCode.M)) {
+            _muteTheMic = !_muteTheMic;
+            _communicator.InputAudioMuted = _muteTheMic;
         }
     }
 
@@ -99,6 +115,7 @@ public class Tester : MonoBehaviour {
     }
 
     void QuitDemo() {
+        _communicator.DisconnectFromHiFiAPIServer();
         #if UNITY_EDITOR
             // Application.Quit() does not work in the editor so
             // UnityEditor.EditorApplication.isPlaying need to be set to false to end the game
