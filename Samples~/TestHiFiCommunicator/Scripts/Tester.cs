@@ -7,12 +7,17 @@ using System.Collections.Generic;
 using UnityEngine;
 
 public class Tester : MonoBehaviour {
+
+    const string DEFAULT_INPUT_DEVICE = "Default Input Device";
+    const string ALTERNATE_INPUT_DEVICE = "Built-in Audio Analog Stereo";
+
     public string HiFiUrl;
     public string HiFiJwt;
     public Vector3 Position;
     public Quaternion Orientation;
     public HiFi.HiFiCommunicator _communicator;
 
+    private string _audioDeviceName = DEFAULT_INPUT_DEVICE;
     private System.Diagnostics.Stopwatch _clock;
     private float _orbitPeriod = 6.0f;
     private float _orbitRadius = 1.0f;
@@ -23,14 +28,18 @@ public class Tester : MonoBehaviour {
     void Awake() {
         Debug.Log("Tester.Awake");
 
-        //// debug: list all microphone devices
-        //foreach (var device in Microphone.devices) {
-        //    Debug.Log("debug microphone='" + device + "'");
-        //}
+        #if EXPERIMENTAL_DEVELOPMENT
+        // debug: list all microphone devices
+        int i = 0;
+        foreach (var device in Microphone.devices) {
+            Debug.Log(string.Format("microphone[{0}]='{1}'", i, device));
+            i += 1;
+        }
+        #endif
 
         // create the Communicator
         _communicator = gameObject.AddComponent<HiFi.HiFiCommunicator>() as HiFi.HiFiCommunicator;
-        _communicator.InputAudioDeviceName = "Default Input Device";
+        _communicator.InputAudioDeviceName = _audioDeviceName;
 
         // for this test we want to fail ASAP whenever there is a problem
         // so we configure the retry/reconnect logic to not try hard
@@ -48,8 +57,7 @@ public class Tester : MonoBehaviour {
             HiFiUrl = "wss://api.highfidelity.com:443/";
         }
         if (string.IsNullOrEmpty(HiFiJwt)) {
-            //HiFiJwt = "get your own Java Web Token (JWT) from https://account.highfidelity.com/dev/account");
-            HiFiJwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBfaWQiOiIxNTU3Zjg1Ny1kOWQ5LTRhYzctOGFjYy1hM2IwNmY2MDhhNmQiLCJ1c2VyX2lkIjoiYW5kcmV3Iiwic3BhY2VfaWQiOiI4YWNhZDk1ZS1mZWI2LTQwNzMtYjdjZi1iYTJmMDVmNzFlZTIiLCJzdGFjayI6ImF1ZGlvbmV0LW1peGVyLWFwaS1ob2JieS0wMSJ9.e4LpUo6WLGlKHquuwSjrxscZ31t5wtW-VnoH7IMS71w";
+            HiFiJwt = "get your own Java Web Token (JWT) from https://account.highfidelity.com/dev/account");
         }
 
         #if USE_HIFI_COORDINATE_FRAME_UTIL
@@ -86,9 +94,22 @@ public class Tester : MonoBehaviour {
             QuitDemo();
         }
         if (Input.GetKeyUp(KeyCode.M)) {
+            // toggle mute
             _muteTheMic = !_muteTheMic;
             _communicator.InputAudioMuted = _muteTheMic;
         }
+        #if EXPERIMENTAL_DEVELOPMENT
+        if (Input.GetKeyUp(KeyCode.N)) {
+            // switch between audio devices
+            if (_audioDeviceName == DEFAULT_INPUT_DEVICE) {
+                _audioDeviceName = ALTERNATE_INPUT_DEVICE;
+            } else {
+                _audioDeviceName = DEFAULT_INPUT_DEVICE;
+            }
+            Debug.Log(string.Format("switching to audioDevice='{0}'", _audioDeviceName));
+            _communicator.InputAudioDeviceName = _audioDeviceName;
+        }
+        #endif
     }
 
     void FixedUpdate() {
@@ -101,16 +122,16 @@ public class Tester : MonoBehaviour {
             // but Unity 2D motion is in XY, so we transform the axes
             Vector3 p = Position;
             Quaternion q = Orientation;
-#if USE_HIFI_COORDINATE_FRAME_UTIL
-            // This is how to do it using HiFiCoordinateFrameUtil
-            _communicator.UserData.Position = HiFi.HiFiCoordinateFrameUtil.UnityPositionToHiFi(p);
-            _communicator.UserData.Orientation = HiFi.HiFiCoordinateFrameUtil.UnityOrientationToHiFi(q);
-#else
-            // This is how to do it manually (and more efficiently)
-            // since all expected rotations are about the "up" axis
-            _communicator.UserData.Position = new Vector3(p.x, 0.0f, -p.y);
-            _communicator.UserData.Orientation = new Quaternion(0.0f, q.z, 0.0f, q.w);
-#endif
+            #if USE_HIFI_COORDINATE_FRAME_UTIL
+                // This is how to do it using HiFiCoordinateFrameUtil
+                _communicator.UserData.Position = HiFi.HiFiCoordinateFrameUtil.UnityPositionToHiFi(p);
+                _communicator.UserData.Orientation = HiFi.HiFiCoordinateFrameUtil.UnityOrientationToHiFi(q);
+            #else
+                // This is how to do it manually (and more efficiently)
+                // since all expected rotations are about the "up" axis
+                _communicator.UserData.Position = new Vector3(p.x, 0.0f, -p.y);
+                _communicator.UserData.Orientation = new Quaternion(0.0f, q.z, 0.0f, q.w);
+            #endif
         }
     }
 
