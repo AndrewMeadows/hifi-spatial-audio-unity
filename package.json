@@ -16,7 +16,7 @@
   ],
   "dependencies": {
     "com.endel.nativewebsocket": "1.1.1",
-    "com.unity.webrtc": "2.4.0-directAudio"
+    "com.unity.webrtc": "2.4.0-exp.4"
   },
   "samples": [
     {
