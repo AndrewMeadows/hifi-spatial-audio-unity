@@ -57,7 +57,7 @@ public class Tester : MonoBehaviour {
             HiFiUrl = "wss://api.highfidelity.com:443/";
         }
         if (string.IsNullOrEmpty(HiFiJwt)) {
-            HiFiJwt = "get your own Java Web Token (JWT) from https://account.highfidelity.com/dev/account");
+            HiFiJwt = "get your own Java Web Token (JWT) from https://account.highfidelity.com/dev/account";
         }
 
         #if USE_HIFI_COORDINATE_FRAME_UTIL
