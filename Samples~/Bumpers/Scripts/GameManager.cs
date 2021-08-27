@@ -158,7 +158,7 @@ public class GameManager : MonoBehaviour {
 
     public void MuteAudioWithGain(bool foo) {
         bool muted = toggleGain.isOn;
-        _communicator.SetInputAudioMuted(muted);
+        _communicator.InputAudioMuted = muted;
     }
 
     public void SetOtherGain(float gain) {
