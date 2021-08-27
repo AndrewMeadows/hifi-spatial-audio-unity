@@ -328,14 +328,17 @@ public class HiFiCommunicator : MonoBehaviour {
             var inputs = Microphone.devices;
             for (int i = 0; i < inputs.Length; ++i) {
                 if (inputs[i] == value) {
-                    _microphoneDeviceName = value;
+                    _inputDeviceName = value;
+                    if (_raviSession) {
+                        _raviSession.InputAudioDeviceName = _inputDeviceName;
+                    }
                     break;
                 }
             }
         }
-        get { return _microphoneDeviceName; }
+        get { return _inputDeviceName; }
     }
-    string _microphoneDeviceName = "Default Input Device";
+    string _inputDeviceName = "Default Input Device";
 
     HiFiMixerInfo _mixerInfo;
     Dictionary<string, IncomingAudioAPIData> _peerDataMap; // "peer key"-->IncomingAudioAPIData
@@ -722,7 +725,7 @@ public class HiFiCommunicator : MonoBehaviour {
 
     void CreateSession() {
         _raviSession = gameObject.AddComponent<RaviSession>() as RaviSession;
-        _raviSession.InputAudioDeviceName = _microphoneDeviceName;
+        _raviSession.InputAudioDeviceName = _inputDeviceName;
         _raviSession.SessionStateChangedEvent += OnRaviSessionStateChanged;
 
         SanityCheckSignalingServiceUrl();

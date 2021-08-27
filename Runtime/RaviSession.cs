@@ -63,12 +63,16 @@ public class RaviSession : MonoBehaviour {
             // we assume we've been given a valid device name
             // and don't bother to sanity-check it
             if (value != _microphoneDeviceName) {
-                Debug.Log("TODO: implement RaviSession.InputAudioDeviceName.set()");
-                /*
-                ReleaseInputAudio();
-                _microphoneDeviceName = value;
-                CaptureInputAudio();
-                */
+                if (_audioStream == null) { 
+                    // Start() has not yet been called
+                    _microphoneDeviceName = value;
+                } else {
+                    Log.Warning(this, "Changing Microphone device after Start() not yet supported.");
+                    // TODO: figure out how to do this
+                    //ReleaseInputAudio();
+                    //_microphoneDeviceName = value;
+                    //CaptureInputAudio();
+                }
             }
         }
         get {
@@ -83,7 +87,7 @@ public class RaviSession : MonoBehaviour {
     AudioSource _receiveAudioSource;
     AudioClip _micClip;
     AudioStreamTrack _sendTrack;
-    List<RTCRtpSender> _rtpSenders;
+    RTCRtpSender _sender;
     bool _muteInputAudio = false;
 
     void Awake() {
@@ -150,17 +154,9 @@ public class RaviSession : MonoBehaviour {
         // avoid unnecessary construction-deconstruction thrash when using
         // non-defaults.
 
-        CaptureInputAudio();
-
-        // add audio track
         _audioStream = new MediaStream();
-        _sendTrack = new AudioStreamTrack(_sendAudioSource);
-        _rtpSenders = new List<RTCRtpSender>();
-        RTCRtpSender sender = PeerConnection.AddTrack(_sendTrack, _audioStream);
-        if (sender != null) {
-            _rtpSenders.Add(sender);
-        }
-        _sendTrack.Enabled = !_muteInputAudio;
+
+        CaptureInputAudio();
 
         // latch onto PeerConnection
         PeerConnection.OnConnectionStateChange = OnConnectionStateChange;
@@ -183,6 +179,7 @@ public class RaviSession : MonoBehaviour {
         _audioStream?.Dispose();
         _audioStream = null;
         _sendTrack?.Dispose();
+        _sendTrack = null;
         _audioStream = null;
         Destroy(_micClip);
         _micClip = null;
@@ -191,24 +188,12 @@ public class RaviSession : MonoBehaviour {
     }
 
     void OnAudioReceived(AudioClip renderer) {
-        Log.Debug(this "OnAudioReceived");
+        Log.Debug(this, "OnAudioReceived");
         // This is only called once when the track is established.
         // We attach the clip to _receiveAudioSource and set it playing.
         _receiveAudioSource.clip = renderer;
         _receiveAudioSource.loop = true;
         _receiveAudioSource.Play();
-    }
-
-    void RemoveAudioCaptureTracks() {
-        if (_rtpSenders != null) {
-            if (PeerConnection != null) {
-                foreach(var sender in _rtpSenders) {
-                    PeerConnection.RemoveTrack(sender);
-                }
-            }
-            _rtpSenders.Clear();
-        }
-        _audioStream = null;
     }
 
     void OnCommandControllerOpen() {
@@ -318,7 +303,7 @@ public class RaviSession : MonoBehaviour {
     public void Close() {
         Log.UncommonEvent(this, "Close");
         UpdateState(SessionState.Closing);
-        RemoveAudioCaptureTracks();
+        RemoveAudioCaptureTrack();
         Signaler.Disconnect();
         PeerConnection.Close();
     }
@@ -402,40 +387,58 @@ public class RaviSession : MonoBehaviour {
         if (_micClip != null) {
             return;
         }
-        lock(_sendAudioSource) {
-            _micClip = Microphone.Start(_microphoneDeviceName, true, 1, 48000);
-            if (_micClip == null) {
-                Log.Warning(this, "CaptureInputAudio failed to start microphone='{}'", _microphoneDeviceName);
-            } else {
-                // set the latency to “0” samples before the audio starts to play.
-                while (!(Microphone.GetPosition(_microphoneDeviceName) > 0)) {}
+        _micClip = Microphone.Start(_microphoneDeviceName, true, 1, 48000);
+        if (_micClip == null) {
+            Log.Warning(this, "CaptureInputAudio failed to start microphone='{}'", _microphoneDeviceName);
+        } else {
+            // set the latency to “0” samples before the audio starts to play.
+            while (!(Microphone.GetPosition(_microphoneDeviceName) > 0)) {}
 
-                // This is how we feed audio to webrtc: we create an AudioSource,
-                // loop it on _micClip, and set it playing.
-                _sendAudioSource.clip = _micClip;
-                _sendAudioSource.loop = true;
-                _sendAudioSource.Play();
+            // This is how we feed audio to webrtc: we create an AudioSource,
+            // loop it on _micClip, and set it playing.
+            _sendAudioSource.clip = _micClip;
+            _sendAudioSource.loop = true;
+            _sendAudioSource.Play();
 
-                // we mute _sendAudioSource to prevent it from echoing sound into
-                // the world (e.g. audio data still reaches the webrtc stream but
-                // not the world)
-                _sendAudioSource.mute = true;
-            }
+            // we mute _sendAudioSource to prevent it from echoing sound into
+            // the world (e.g. audio data still reaches the webrtc stream but
+            // not the world)
+            _sendAudioSource.mute = true;
         }
+
+        // add audio track
+        _sendTrack = new AudioStreamTrack(_sendAudioSource);
+        _sender = PeerConnection.AddTrack(_sendTrack, _audioStream);
+        _sendTrack.Enabled = !_muteInputAudio;
+    }
+
+    void RemoveAudioCaptureTrack() {
+        Log.UncommonEvent(this, "RemoveAudioCaptureTrack");
+        if (_sendTrack != null) {
+            _sendTrack.Enabled = false;
+        }
+        if (_sender != null) {
+            PeerConnection.RemoveTrack(_sender);
+            _sender.Dispose();
+            _sender = null;
+        }
+        _sendTrack?.Dispose();
+        _sendTrack = null;
     }
 
     void ReleaseInputAudio() {
+        // DO NOT USE: WIP: this does not work as intended yet.
+        // The goal it to help the RaviSession switch microphone devices but
+        // removing the track triggers a NegotiationNeeded webrtc event.
         // TODO: figure out how to do this
-        /*
-        if (_muteInputAudio) {
-            if (_micClip != null) {
-                Microphone.End(_microphoneDeviceName);
-                _sendAudioSource.Stop();
-                _sendAudioSource.clip = null;
-                Destroy(_micClip);
-                _micClip = null;
-            }
-        */
+        Log.UncommonEvent(this, "ReleaseInputAudio");
+        _sendAudioSource.Stop();
+        RemoveAudioCaptureTrack();
+        _sendAudioSource.clip = null;
+        if (_micClip) {
+            Destroy(_micClip);
+            _micClip = null;
+        }
     }
 }
 
