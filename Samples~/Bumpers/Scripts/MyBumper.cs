@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class MyBumper : MonoBehaviour {
     public float LinearSpeed;
@@ -15,11 +16,21 @@ public class MyBumper : MonoBehaviour {
     string _input;
     Rigidbody2D _body;
     AudioListener _listener;
+    MyControls _myControls;
+
+    void Awake() {
+        _listener = gameObject.AddComponent<AudioListener>() as AudioListener;
+        _body = GetComponent<Rigidbody2D>();
+        _myControls = new MyControls();
+    }
 
     void Start() {
-        _listener = gameObject.AddComponent<AudioListener>() as AudioListener;
+        // don't forget to enable the various input actions
+        // which are disabled by default
+        _myControls.Movement.ForwardBack.Enable();
+        _myControls.Movement.Rotate.Enable();
+        _myControls.Movement.Strafe.Enable();
 
-        _body = GetComponent<Rigidbody2D>();
         const float MIN_MOVEMENT_TIMESCALE = 0.05f;
         const float MAX_MOVEMENT_TIMESCALE = 1.0f;
         MovementTimescale = Mathf.Clamp(MovementTimescale, MIN_MOVEMENT_TIMESCALE, MAX_MOVEMENT_TIMESCALE);
@@ -57,7 +68,9 @@ public class MyBumper : MonoBehaviour {
 
     void UpdateVelocities() {
         // compute targetLinearVelocity based on input
-        Vector2 targetLinearVelocity = LinearSpeed * new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
+        Vector2 targetLinearVelocity = LinearSpeed * new Vector2(
+                _myControls.Movement.Strafe.ReadValue<float>(),
+                _myControls.Movement.ForwardBack.ReadValue<float>());
 
         // transform world-velocity into local-frame
         Vector3 v = Quaternion.Inverse(transform.rotation) * new Vector3(_body.velocity.x, _body.velocity.y, 0.0f);
@@ -82,7 +95,7 @@ public class MyBumper : MonoBehaviour {
         _body.velocity = new Vector2(v.x, v.y);
 
         // similar blend for angular, except it is one-dimensional
-        float targetAngularVelocity = AngularSpeed * Input.GetAxis("Rotate");
+        float targetAngularVelocity = AngularSpeed * _myControls.Movement.Rotate.ReadValue<float>();
         float newAngularVelocity = del * targetAngularVelocity + (1.0f - del) * _body.angularVelocity;
         if (System.Math.Abs(newAngularVelocity) > MaxAngularSpeed) {
             newAngularVelocity *= MaxAngularSpeed / System.Math.Abs(newAngularVelocity);
