@@ -62,13 +62,7 @@ public class GameManager : MonoBehaviour {
         // TODO: get your own valid JWT above
         if (HiFiJwt == "get your own Java Web Token (JWT) from https://account.highfidelity.com/dev/account") {
             Debug.Log("ERROR: this demo needs a valid JWT before it will work!");
-        #if UNITY_EDITOR
-            // Application.Quit() does not work in the editor so
-            // UnityEditor.EditorApplication.isPlaying need to be set to false to end the game
-            UnityEditor.EditorApplication.isPlaying = false;
-        #else
-            Application.Quit();
-        #endif
+            QuitApplication();
         } else {
             _communicator.PeerDataUpdatedEvent += HandlePeerChanges;
             _communicator.PeerDisconnectedEvent += HandlePeerDisconnects;
@@ -83,6 +77,11 @@ public class GameManager : MonoBehaviour {
 
     void Update() {
         if (Input.GetKeyUp("escape") || Input.GetAxis("Cancel") > 0.0f) {
+            QuitApplication();
+        }
+    }
+
+    void QuitApplication() {
         #if UNITY_EDITOR
             // Application.Quit() does not work in the editor so
             // UnityEditor.EditorApplication.isPlaying need to be set to false to end the game
@@ -90,7 +89,6 @@ public class GameManager : MonoBehaviour {
         #else
             Application.Quit();
         #endif
-        }
     }
 
     void FixedUpdate() {

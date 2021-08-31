@@ -25,11 +25,12 @@ Please see [Install package](INSTALL.md).
 
 ## Using the Bumpers Sample
 
-1. Import the dependencies and the package [https://github.com/highfidelity/hifi-spatial-audio-unity.git](INSTALL.md).
-2. Import the Bumpers Sample from the package. (e.g., select the HiFi Spatialized Audio package in the Package Manager => Samples => Bumpers => Import)
-3. From the Project window, add Assets => Samples => HiFi Spatialized Audio => 0.1.0 => Bumpers => Scenes => BumpersScene to the Hierarchy, and remove any other scenes.
-4. In the "BumpersScene" Hierarchy, select gameManager. In the Inspector, click on the empty text box next to "Hi Fi Jwt". Enter a JWT generated from https://account.highfidelity.com
-5. Set up an Input Axis Rotate if it doesn't already exist, using Edit => Project Setting... => Input Manager => Axes.
+1. Import the dependency packages first.
+2. Add the hifi-spatial-audio-unity package [https://github.com/highfidelity/hifi-spatial-audio-unity.git](INSTALL.md).
+3. Import the Bumpers Sample from the package. (e.g., select the HiFi Spatialized Audio package in the Package Manager => Samples => Bumpers => Import)
+4. From the Project window, add Assets => Samples => HiFi Spatialized Audio => 0.2.0 => Bumpers => Scenes => BumpersScene to the Hierarchy, and remove any other scenes.
+5. In the "BumpersScene" Hierarchy, select gameManager. In the Inspector, click on the empty text box next to "Hi Fi Jwt". Enter a JWT generated from https://account.highfidelity.com
+6. Set up an Input Axis Rotate if it doesn't already exist, using Edit => Project Setting... => Input Manager => Axes.
 Increase size to get a new field. Change values:
 ```
   Name: Rotate
@@ -43,6 +44,7 @@ Increase size to get a new field. Change values:
   Type: Key or Mouse Button
   Axis: X axis
 ```
+7. Alternatively to steps 5 and 6: Outside of the Unity Editor: copy the sample's `InputManager.asset` file on top of your `ProjectSettings/InputManager.asset` file (e.g. copy `.../unityProject/Assets/Samples/Hifi Spatialized Audio/0.2.0/Bumpers/InputManager.asset` to `.../unityProject/ProjectSettings/InputManager.asset`).
 
 ## Licenses
 
