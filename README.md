@@ -44,7 +44,7 @@ Increase size to get a new field. Change values:
   Type: Key or Mouse Button
   Axis: X axis
 ```
-7. Alternatively to steps 5 and 6: Outside of the Unity Editor: copy the sample's `InputManager.asset` file on top of your `ProjectSettings/InputManager.asset` file (e.g. copy `.../unityProject/Assets/Samples/Hifi Spatialized Audio/0.2.0/Bumpers/InputManager.asset` to `.../unityProject/ProjectSettings/InputManager.asset`).
+7. Alternatively to steps 5 and 6: Outside of the Unity Editor: copy the sample's `CopyToInputManager.asset` file on top of your `ProjectSettings/InputManager.asset` file (e.g. copy `.../unityProject/Assets/Samples/Hifi Spatialized Audio/0.2.0/Bumpers/CopyToInputManager.asset` to `.../unityProject/ProjectSettings/InputManager.asset`).
 
 ## Licenses
 
