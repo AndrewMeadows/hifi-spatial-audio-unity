@@ -338,7 +338,7 @@ public class HiFiCommunicator : MonoBehaviour {
         }
         get { return _inputDeviceName; }
     }
-    string _inputDeviceName = "Default Input Device";
+    string _inputDeviceName = "unknown";
 
     HiFiMixerInfo _mixerInfo;
     Dictionary<string, IncomingAudioAPIData> _peerDataMap; // "peer key"-->IncomingAudioAPIData
@@ -364,6 +364,16 @@ public class HiFiCommunicator : MonoBehaviour {
 
     void Awake() {
         RaviUtil.InitializeWebRTC();
+
+        // default init to first available mic (if available)
+        // when _inputDeviceName has not been set by external logic.
+        if (_inputDeviceName == "unknown") {
+            var devices = Microphone.devices;
+            if (devices.Length > 0) {
+                _inputDeviceName = devices[0];
+            }
+        }
+
         const int MAX_UNCOMPRESSED_BUFFER_SIZE = 65536;
         _uncompressedData = new byte[MAX_UNCOMPRESSED_BUFFER_SIZE];
 

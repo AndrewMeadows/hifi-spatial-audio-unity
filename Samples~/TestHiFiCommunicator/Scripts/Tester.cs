@@ -8,16 +8,13 @@ using UnityEngine;
 
 public class Tester : MonoBehaviour {
 
-    const string DEFAULT_INPUT_DEVICE = "Default Input Device";
-    const string ALTERNATE_INPUT_DEVICE = "Built-in Audio Analog Stereo";
-
     public string HiFiUrl;
     public string HiFiJwt;
     public Vector3 Position;
     public Quaternion Orientation;
     public HiFi.HiFiCommunicator _communicator;
 
-    private string _audioDeviceName = DEFAULT_INPUT_DEVICE;
+    private string _audioDeviceName = "unknown";
     private System.Diagnostics.Stopwatch _clock;
     private float _orbitPeriod = 6.0f;
     private float _orbitRadius = 1.0f;
@@ -36,6 +33,12 @@ public class Tester : MonoBehaviour {
             i += 1;
         }
         #endif
+
+        // use the first available mic, if any
+        if (Microphone.devices.Length > 0) {
+            _audioDeviceName = Microphone.devices[0];
+        }
+        Debug.Log(string.Format("audioDeviceName='{0}'", _audioDeviceName));
 
         // create the Communicator
         _communicator = gameObject.AddComponent<HiFi.HiFiCommunicator>() as HiFi.HiFiCommunicator;
@@ -100,14 +103,18 @@ public class Tester : MonoBehaviour {
         }
         #if EXPERIMENTAL_DEVELOPMENT
         if (Input.GetKeyUp(KeyCode.N)) {
-            // switch between audio devices
-            if (_audioDeviceName == DEFAULT_INPUT_DEVICE) {
-                _audioDeviceName = ALTERNATE_INPUT_DEVICE;
-            } else {
-                _audioDeviceName = DEFAULT_INPUT_DEVICE;
+            // swap between first two mics
+            // to test ability to hot-swap devices
+            var devces = Microphone.devices;
+            if (devices.Length > 1) {
+                if (_audioDeviceName == devices[1]) {
+                    _audioDeviceName = devices[0];
+                } else {
+                    _audioDeviceName = devices[1];
+                }
+                Debug.Log(string.Format("switching to audioDevice='{0}'", _audioDeviceName));
+                _communicator.InputAudioDeviceName = _audioDeviceName;
             }
-            Debug.Log(string.Format("switching to audioDevice='{0}'", _audioDeviceName));
-            _communicator.InputAudioDeviceName = _audioDeviceName;
         }
         #endif
     }

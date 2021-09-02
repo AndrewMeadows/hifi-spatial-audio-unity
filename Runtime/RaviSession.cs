@@ -62,25 +62,28 @@ public class RaviSession : MonoBehaviour {
         set {
             // we assume we've been given a valid device name
             // and don't bother to sanity-check it
-            if (value != _microphoneDeviceName) {
+            if (value != _inputDeviceName) {
                 if (_audioStream == null) { 
                     // Start() has not yet been called
-                    _microphoneDeviceName = value;
+                    _inputDeviceName = value;
                 } else {
                     Log.Warning(this, "Changing Microphone device after Start() not yet supported.");
                     // TODO: figure out how to do this
                     //ReleaseInputAudio();
-                    //_microphoneDeviceName = value;
+                    //_inputDeviceName = value;
                     //CaptureInputAudio();
                 }
             }
         }
         get {
-            return _microphoneDeviceName;
+            return _inputDeviceName;
         }
     }
-    //string _microphoneDeviceName = "Default Input Device";
-    string _microphoneDeviceName = "Built-in Audio Analog Stereo";
+    // Note: RaviSession will throw exception if _inputDeviceName
+    // is not set to a valid name before it is used, however the HiFi
+    // layer knows this and should default to first available mic if
+    // none is specified via external logic.
+    string _inputDeviceName = "unknown";
 
     MediaStream _audioStream;
     AudioSource _sendAudioSource;
@@ -175,7 +178,7 @@ public class RaviSession : MonoBehaviour {
     }
 
     void OnDestroy() {
-        Microphone.End(_microphoneDeviceName);
+        Microphone.End(_inputDeviceName);
         _audioStream?.Dispose();
         _audioStream = null;
         _sendTrack?.Dispose();
@@ -383,16 +386,16 @@ public class RaviSession : MonoBehaviour {
     }
 
     void CaptureInputAudio() {
-        Log.UncommonEvent(this, "CaptureInputAudio mic='{0}' mute={1}", _microphoneDeviceName, _muteInputAudio);
+        Log.UncommonEvent(this, "CaptureInputAudio mic='{0}' mute={1}", _inputDeviceName, _muteInputAudio);
         if (_micClip != null) {
             return;
         }
-        _micClip = Microphone.Start(_microphoneDeviceName, true, 1, 48000);
+        _micClip = Microphone.Start(_inputDeviceName, true, 1, 48000);
         if (_micClip == null) {
-            Log.Warning(this, "CaptureInputAudio failed to start microphone='{}'", _microphoneDeviceName);
+            Log.Warning(this, "CaptureInputAudio failed to start microphone='{}'", _inputDeviceName);
         } else {
             // set the latency to “0” samples before the audio starts to play.
-            while (!(Microphone.GetPosition(_microphoneDeviceName) > 0)) {}
+            while (!(Microphone.GetPosition(_inputDeviceName) > 0)) {}
 
             // This is how we feed audio to webrtc: we create an AudioSource,
             // loop it on _micClip, and set it playing.
