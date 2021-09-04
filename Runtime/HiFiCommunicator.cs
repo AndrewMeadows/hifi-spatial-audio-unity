@@ -130,6 +130,46 @@ public class UserDataWrapper {
 [AddComponentMenu("HiFi Spatial Audio Communicator")]
 [Serializable]
 public class HiFiCommunicator : MonoBehaviour {
+
+    // MuteState describes the current and intended state of the client's input
+    // audio mute (e.g. from the microphone).  It is passed as a parameter
+    // to Observer::onMuteStateChange() callback.
+    public class MuteState {
+        // Whether the mute state agrees with last attempted changed.  This can
+        // be 'false' if the client is trying to unmute when adminPreventsUnmuting
+        // is true (e.g. after a server-side "mute=true instruciton") or if there
+        // was a failure setting the mute state of the input device.
+        public bool success = false;
+
+        // Indicates the muted value that would have been set if the mute state
+        // was set succesfully.  `true` means muted, `false` means unmuted.
+        // The client changes this value via Communicator::setInputAudioMuted().
+        // The server changes this value via a "mute instruction".
+        public bool targetMuteValue = false;
+
+        // Indicates the current muted value after attempting to set mute state.
+        // `true` means muted, `false` means unmuted.
+        public bool currentMuteValue = false;
+
+        // Indicates whether the client is currently prevented from using
+        // Communicator::setInputAudioMuted() to unmuting because of server-side
+        // "mute instruction".
+        public bool adminPreventsUnmuting = false;
+
+        // Indicates the reason the mute state has changed.
+        public string reason = "unknown";
+
+        public MuteState DeepCopy() {
+            MuteState m = new MuteState();
+            m.success = success;
+            m.targetMuteValue = targetMuteValue;
+            m.currentMuteValue = currentMuteValue;
+            m.adminPreventsUnmuting = adminPreventsUnmuting;
+            m.reason = reason;
+            return m;
+        }
+    }
+
     const long THE_DISTANT_FUTURE = Int64.MaxValue;
 
     /// <summary name="AudionetConnectionState">
@@ -213,19 +253,58 @@ public class HiFiCommunicator : MonoBehaviour {
     public string JWT;
 
     /// <summary>
-    /// Whether input audio is muted.
+    /// Whether or not input audio should be muted.
     /// </summary>
     public bool InputAudioMuted {
         set {
-            if (_raviSession != null) {
-                _raviSession.InputAudioMuted = value;
+            bool mute_state_changed = false;
+            MuteState mute_state = new MuteState();
+            lock(_muteState) {
+                bool was_muted = _muteState.currentMuteValue;
+                if (_raviSession != null) {
+                    if (value) {
+                        _raviSession.InputAudioMuted = value;
+                        _muteState.reason = "local mute";
+                    } else {
+                        if (_muteState.adminPreventsUnmuting) {
+                            _muteState.reason = "local unmute prevented by remote admin";
+                            mute_state_changed = true;
+                        } else {
+                            _raviSession.InputAudioMuted = value;
+                            _muteState.reason = "local unmute";
+                        }
+                    }
+                    _muteState.currentMuteValue = _raviSession.InputAudioMuted;
+                } else {
+                    // there is no session so we are effectively muted
+                    _muteState.currentMuteValue = true;
+                    _muteState.reason = "no session";
+                }
+                if (_muteState.targetMuteValue != value) {
+                    mute_state_changed = true;
+                }
+                _muteState.targetMuteValue = value;
+                _muteState.success = (_muteState.currentMuteValue == value);
+                if (was_muted != _muteState.currentMuteValue || mute_state_changed) {
+                    mute_state_changed = true;
+                    mute_state = _muteState.DeepCopy();
+                }
+            }
+            if (mute_state_changed) {
+                MuteStateChangedEvent?.Invoke(mute_state);
             }
         }
         get {
-            if (_raviSession != null) {
-                return _raviSession.InputAudioMuted;
+            // Note: we could ask the _raviSession like so:
+            //if (_raviSession != null) {
+            //    return _raviSession.InputAudioMuted;
+            //}
+            // but instead we assume _muteState is correct and up to date
+            bool is_muted = false;
+            lock(_muteState) {
+                is_muted = _muteState.currentMuteValue;
             }
-            return true;
+            return is_muted;
         }
     }
 
@@ -296,6 +375,15 @@ public class HiFiCommunicator : MonoBehaviour {
     /// <see cref="PeerDisconnectedEvent"/>
     public delegate void OnPeerDisconnectedDelegate(SortedSet<string> ids);
 
+    /// <summary name="OnMuteStateChangedDelegate">
+    /// The function signature for the MuteStateChangedEvent
+    /// </summary>
+    /// <param name="mute_state">
+    /// A copy of the Communicator's MuteState
+    /// </param>
+    /// <see cref="MuteStateChangedEvent"/>
+    public delegate void OnMuteStateChangedDelegate(MuteState mute_state);
+
     /// <summary name="ConnectionStateChangedEvent">
     /// This event fires on the main thread after the ConnectionState changes.
     /// </summary>
@@ -312,6 +400,12 @@ public class HiFiCommunicator : MonoBehaviour {
     /// </summary>
     /// <see cref="OnPeerDisconnectedDelegate"/>
     public event OnPeerDisconnectedDelegate PeerDisconnectedEvent;
+
+    /// <summary name="MuteStateChangedEvent">
+    /// This event fires on the main thread after the mute state of the webrtc connection has changed, either through local setting or remote instruction.
+    /// </summary>
+    /// <see cref="OnMuteStateChangedDelegate"/>
+    public event OnMuteStateChangedDelegate MuteStateChangedEvent;
 
     /// <summary name="UserData">
     /// Property for communicating local user data changes to be sent to HiFi Spatial Audio Service.
@@ -348,11 +442,14 @@ public class HiFiCommunicator : MonoBehaviour {
 
     OutgoingAudioAPIData _lastUserData;
 
+    MuteState _muteState;
+
     byte[] _uncompressedData;
     bool _stateHasChanged = false;
     bool _peerDataHasChanged = false;
     bool _peersHaveDisconnected = false;
     bool _neverConnected = true;
+    bool _terminateNextUpdate = false;
 
     public HiFiCommunicator() {
         _userDataUpdateExpiry = 0;
@@ -364,6 +461,7 @@ public class HiFiCommunicator : MonoBehaviour {
 
     void Awake() {
         RaviUtil.InitializeWebRTC();
+        _muteState = new MuteState();
 
         // default init to first available mic (if available)
         // when _inputDeviceName has not been set by external logic.
@@ -408,7 +506,7 @@ public class HiFiCommunicator : MonoBehaviour {
     void Start() {
     }
 
-    void Update() {
+    void FixedUpdate() {
         if (_stateHasChanged) {
             _stateHasChanged = false;
             ConnectionStateChangedEvent?.Invoke(ConnectionState);
@@ -508,7 +606,10 @@ public class HiFiCommunicator : MonoBehaviour {
                     _attemptExpiry = THE_DISTANT_FUTURE;
                     _nextAttempt = now + ConnectionConfig.ConnectionDelayMs * TICKS_PER_MSEC;
                     DestroySession();
-                } else if (now > _nextAttempt) {
+                } else if (now > _nextAttempt
+                        && !(ConnectionState == AudionetConnectionState.Connecting && !ConnectionConfig.AutoRetryConnection)
+                        && !(ConnectionState == AudionetConnectionState.Reconnecting && !ConnectionConfig.AutoReconnect))
+                {
                     // start a new attempt
                     _attemptExpiry = now + ConnectionConfig.ConnectionTimeoutMs * TICKS_PER_MSEC;
                     _nextAttempt = THE_DISTANT_FUTURE;
@@ -518,6 +619,14 @@ public class HiFiCommunicator : MonoBehaviour {
                     CreateSession();
                 }
             }
+        }
+
+        if (_terminateNextUpdate) {
+            _terminateNextUpdate = false;
+            // set _reconnectingExpiry to expired non-zero value to prevent reconnection attempts
+            _reconnectingExpiry = 1;
+            DisconnectFromHiFiAPIServer();
+            return;
         }
 
         if (ConnectionState != AudionetConnectionState.Connected) {
@@ -587,8 +696,10 @@ public class HiFiCommunicator : MonoBehaviour {
                 // this is our first attempt to connect
                 // and this is the only place where we set _connectingExpiry non-zero
                 long try_period = 5; // seconds
-                if (ConnectionConfig.RetryConnectionTimeout > try_period) {
-                    try_period = ConnectionConfig.RetryConnectionTimeout;
+                if (ConnectionConfig.AutoRetryConnection) {
+                    if (ConnectionConfig.RetryConnectionTimeout > try_period) {
+                        try_period = ConnectionConfig.RetryConnectionTimeout;
+                    }
                 }
                 _connectingExpiry = now + try_period * TICKS_PER_SECOND;
                 Log.UncommonEvent(this, "ConnectToHiFiAudioAPIServer _connectingExpiry={0}", _connectingExpiry);
@@ -725,15 +836,18 @@ public class HiFiCommunicator : MonoBehaviour {
 
     void DestroySession() {
         if (_raviSession != null) {
+            //Log.UncommonEvent(this, "DestroySession");
             _raviSession.CommandController.RemoveCommandHandler("audionet.init");
             _raviSession.CommandController.RemoveCommandHandler("audionet.personal_volume_adjust");
             _raviSession.CommandController.BinaryCommandHandler = null;
+            _raviSession.SessionStateChangedEvent -= OnRaviSessionStateChanged;
             Destroy(_raviSession);
             _raviSession = null;
         }
     }
 
     void CreateSession() {
+        //Log.UncommonEvent(this, "CreateSession");
         _raviSession = gameObject.AddComponent<RaviSession>() as RaviSession;
         _raviSession.InputAudioDeviceName = _inputDeviceName;
         _raviSession.SessionStateChangedEvent += OnRaviSessionStateChanged;
@@ -883,9 +997,31 @@ public class HiFiCommunicator : MonoBehaviour {
                 text = System.Text.Encoding.UTF8.GetString(data);
             }
         }
+        // The json_data is expected to look something like this:
+        //
+        // json_data = {
+        //   "peers":
+        //     {"2": {IncomingUserData_InJsonStringFormat},
+        //      "9": {IncomingUserData_InJsonStringFormat}
+        //       ...
+        //     },
+        //   "deleted_visit_ids":
+        //     [ "dead7", "beef3", "fade1" ],
+        //   "instructions":
+        //     [ ["mute",true],
+        //       ["terminate","{\"reason\":\"kick\"}"]]
+        //  }
         lock (_peerDataMap) {
             try {
                 JSONNode obj = JSONNode.Parse(text);
+                // The "peers" entry is a map of <key, IncomingPeerData> pairs.
+                // The key will be used to identify all future updates... except
+                // the delete which is identified by the visidIdHash inside the
+                // "deleted_visit_ids" entry (which really should have been called
+                // "deleted_visit_id_hashes" but oh well).  Therefore when adding
+                // new peers we must extract the visidIdHash and store it in a
+                // hash->key lookup map for later.
+                //
                 if (obj.HasKey("peers")) {
                     JSONNode peers = obj["peers"];
                     foreach (string key in peers.Keys) {
@@ -917,6 +1053,10 @@ public class HiFiCommunicator : MonoBehaviour {
                         }
                     }
                 }
+                // The "deleted_visit_ids" entry is an array of hashedVisitIds of peers that have left
+                // the service from this user's perspective.  We use hashedVisitID as a key to _peerKeyMap
+                // which will give us the actual key to _peerDataMap.
+                //
                 if (obj.HasKey("deleted_visit_ids")) {
                     JSONNode ids = obj["deleted_visit_ids"];
                     if (ids.IsArray) {
@@ -932,9 +1072,87 @@ public class HiFiCommunicator : MonoBehaviour {
                     }
                     _peersHaveDisconnected = true;
                 }
+                // The "instructions" entry is an array whose elements are arrays with the
+                // format: [instruction_name, instruction_params...]
+                // For example: the server may ask the User to "mute" or to "terminate".
+                //
+                if (obj.HasKey("instructions")) {
+                    JSONNode instructions = obj["instructions"];
+                    foreach (JSONNode instruction in instructions) {
+                        HandleInstruction(instruction);
+                    }
+                }
             } catch (Exception e) {
                 Log.Error(this, "HandleAudionetBinaryData failed to parse RaviSessionBinaryData err='{0}'", e.Message);
             }
+        }
+    }
+
+    void HandleInstruction(JSONNode instruction) {
+        try {
+            // instruction is expected to be an array: [ "name", param0, param1, ... ]
+            // at the moment all instruction types expect one parameter
+            //     ["mute",true]
+            //     ["terminate","{\"reason\":\"kick\"}"]]
+            //Log.UncommonEvent(this, "HandleInstruction instruction='{0}'", instruction.ToString());
+            string name = instruction[0];
+            if (name == "mute") {
+                bool mute = instruction[1];
+                Log.Warning(this, "HandleInstruction mute='{0}'", mute);
+                bool mute_state_changed = false;
+                MuteState mute_state = new MuteState();
+                lock(_muteState) {
+                    // Note: just in case there is a mismatch between _muteState
+                    // and the actual state of _raviSession's internals we compute
+                    // was_muted and is_muted using distinct logic
+                    bool was_muted = _muteState.currentMuteValue;
+                    bool is_muted = true;
+                    if (_raviSession) {
+                        is_muted = _raviSession.InputAudioMuted;
+                    }
+                    if (mute != _muteState.adminPreventsUnmuting) {
+                        mute_state_changed = true;
+                        _muteState.adminPreventsUnmuting = mute;
+                        if (mute) {
+                            if (_raviSession) {
+                                if (mute != is_muted) {
+                                    _raviSession.InputAudioMuted = mute;
+                                    is_muted = _raviSession.InputAudioMuted;
+                                }
+                            }
+                        } else {
+                            // The server doesn't actually unmute the audio.
+                            // All it does is clear the adminPreventsUnmuting bit
+                            // so the client App can unmute at its leisure.
+                        }
+                    }
+                    _muteState.success = (mute == is_muted);
+                    _muteState.targetMuteValue = mute;
+                    _muteState.currentMuteValue = is_muted;
+                    if (_muteState.targetMuteValue != mute) {
+                        mute_state_changed = true;
+                    }
+                    if (mute) {
+                        _muteState.reason = "server muted";
+                    } else {
+                        _muteState.reason = "server unmuted";
+                    }
+                    if (was_muted != _muteState.currentMuteValue || mute_state_changed) {
+                        mute_state_changed = true;
+                        mute_state = _muteState.DeepCopy();
+                    }
+                }
+
+                if (mute_state_changed) {
+                    MuteStateChangedEvent?.Invoke(mute_state);
+                }
+            } else if (name == "terminate") {
+                string reason = instruction[1];
+                Log.Warning(this, "HandleInstruction terminate reason='{0}'", reason);
+                _terminateNextUpdate = true;
+            }
+        } catch (Exception) {
+            Log.Warning(this, "HandleInstruction failed to parse instruction msg='{0}'", instruction.ToString());
         }
     }
 

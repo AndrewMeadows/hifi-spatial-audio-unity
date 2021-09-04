@@ -55,6 +55,7 @@ public class Tester : MonoBehaviour {
         _communicator.ConnectionStateChangedEvent += HandleHiFiConnectionStateChange;
         _communicator.PeerDataUpdatedEvent += HandlePeerChanges;
         _communicator.PeerDisconnectedEvent += HandlePeerDisconnects;
+        _communicator.MuteStateChangedEvent += HandleMuteChanged;
 
         if (string.IsNullOrEmpty(HiFiUrl)) {
             HiFiUrl = "wss://api.highfidelity.com:443/";
@@ -175,5 +176,9 @@ public class Tester : MonoBehaviour {
 
     void HandlePeerDisconnects(SortedSet<string> keys) {
         // this is where we would forget about known peers who have left
+    }
+
+    void HandleMuteChanged(HiFi.HiFiCommunicator.MuteState mute_state) {
+        Debug.Log(string.Format("Tester.HandleMuteChanged muted={0} reason={1}", mute_state.currentMuteValue, mute_state.reason));
     }
 }

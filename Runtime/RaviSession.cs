@@ -63,7 +63,7 @@ public class RaviSession : MonoBehaviour {
             // we assume we've been given a valid device name
             // and don't bother to sanity-check it
             if (value != _inputDeviceName) {
-                if (_audioStream == null) { 
+                if (_audioStream == null) {
                     // Start() has not yet been called
                     _inputDeviceName = value;
                 } else {
@@ -284,7 +284,7 @@ public class RaviSession : MonoBehaviour {
     /// ip:port of signaling websocket.
     /// </param>
     public void Connect(string signalUrl) {
-        Log.UncommonEvent(this, "Open");
+        Log.UncommonEvent(this, "Connect");
         if (State == SessionState.Failed || State == SessionState.Unavailable) {
             UpdateState(SessionState.Closed);
         }
@@ -382,6 +382,12 @@ public class RaviSession : MonoBehaviour {
         Log.Debug(this, "OnSignalStateChanged signalState={0} sessionState={1}", state, State);
         if (state == RaviSignaler.SignalState.Unavailable) {
             UpdateState(SessionState.Unavailable);
+        } else if (state == RaviSignaler.SignalState.Closed && State == SessionState.Signaling) {
+            // this would mean our signal connection was immediately rejected
+            // or more likely the server is just unavailable: it is down or
+            // the server URI was wrong.
+            //
+            // TODO?: pre-emptively shutdown this RaviSession?
         }
     }
 
