@@ -30,6 +30,8 @@ public class RaviSession : MonoBehaviour {
     public delegate void SessionStateChangedDelegate(SessionState state);
     public event SessionStateChangedDelegate SessionStateChangedEvent;
 
+    public delegate void OnInboundAudioStatsDelegate(string stats);
+
     /// <summary>
     /// Signaler for connecting to WebRTC peer
     /// </summary>
@@ -91,6 +93,7 @@ public class RaviSession : MonoBehaviour {
     AudioClip _micClip;
     AudioStreamTrack _sendTrack;
     RTCRtpSender _sender;
+    RTCRtpTransceiver _transceiver;
     bool _muteInputAudio = false;
 
     void Awake() {
@@ -175,6 +178,59 @@ public class RaviSession : MonoBehaviour {
     }
 
     void Update() {
+    }
+
+    /// for debug purposes
+    public IEnumerator DumpAllStats() {
+        // Already instantiated PeerConnection as RTCPeerConnection.
+        var operation = PeerConnection.GetStats();
+        yield return operation;
+        if (!operation.IsError) {
+            var report = operation.Value;
+            Debug.Log("RaviSession.DumpRTCStats:");
+            foreach (RTCStats stat in report.Stats.Values) {
+                Debug.Log(stat.ToJson());
+            }
+        }
+    }
+
+    /// for debug purposes
+    public IEnumerator DumpAudioStats() {
+        // Already instantiated PeerConnection as RTCPeerConnection.
+        var operation = PeerConnection.GetStats();
+        yield return operation;
+        if (!operation.IsError) {
+            var report = operation.Value;
+            Debug.Log("RaviSession.DumpRTCStats:");
+            foreach (RTCStats stat in report.Stats.Values) {
+                string id = stat.Id;
+                if (id.StartsWith("RTCInboundRTPAudioStream")
+                        || id.StartsWith("RTCMediaStreamTrack_receiver")
+                        || id.StartsWith("RTCOutboundRTPAudioStream")
+                        || id.StartsWith("RTCRemoteInboundRtpAudioStream"))
+                {
+                    Debug.Log(stat.ToJson());
+                }
+            }
+        }
+    }
+
+    /// for debug purposes
+    public IEnumerator DumpReceiverStats() {
+        if (_transceiver != null) {
+            RTCRtpReceiver receiver = _transceiver.Receiver;
+            if (receiver != null) {
+                var operation = receiver.GetStats();
+                yield return operation;
+                if (!operation.IsError) {
+                    var report = operation.Value;
+                    Debug.Log("RaviSession.DumpReceiverStats:");
+                    foreach (RTCStats stat in report.Stats.Values) {
+                        Debug.Log(stat.ToJson());
+                    }
+                }
+            }
+        }
     }
 
     void OnDestroy() {
@@ -272,9 +328,16 @@ public class RaviSession : MonoBehaviour {
     void OnTrack(RTCTrackEvent e) {
         // fired when something about a track changes
         var track = e.Track as AudioStreamTrack;
-        track.OnAudioReceived += OnAudioReceived;
+        RTCRtpTransceiverDirection direction = RTCRtpTransceiverDirection.Inactive;
         RTCRtpTransceiver transceiver = e.Transceiver;
-        Log.UncommonEvent(this, "OnTrack transceiver.dir={0} enabled={1} kind={2}", transceiver.Direction, track.Enabled, track.Kind);
+        if (_transceiver == null) {
+            _transceiver = e.Transceiver;
+            track.OnAudioReceived += OnAudioReceived;
+        }
+        if (_transceiver != null) {
+            direction = _transceiver.Direction;
+        }
+        Log.UncommonEvent(this, "OnTrack transceiver.dir={0} enabled={1} kind={2}", direction, track.Enabled, track.Kind);
     }
 
     /// <summary>
@@ -441,6 +504,23 @@ public class RaviSession : MonoBehaviour {
         if (_micClip) {
             Destroy(_micClip);
             _micClip = null;
+        }
+    }
+
+    public IEnumerator GetInboundAudioStats(OnInboundAudioStatsDelegate handler, float period) {
+        while (PeerConnection != null) {
+            var operation = PeerConnection.GetStats();
+            yield return operation;
+            if (!operation.IsError && handler != null) {
+                var report = operation.Value;
+                foreach (RTCStats stat in report.Stats.Values) {
+                    if (stat.Id.StartsWith("RTCInboundRTPAudioStream")) {
+                        handler(stat.ToJson());
+                        break;
+                    }
+                }
+            }
+            yield return new WaitForSeconds(period);
         }
     }
 }

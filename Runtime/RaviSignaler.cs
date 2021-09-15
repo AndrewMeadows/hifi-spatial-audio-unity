@@ -66,7 +66,7 @@ public class RaviSignaler : MonoBehaviour {
     void UpdateState(SignalState newState) {
         // DANGER: not necessarily fired on main thread!
         if (newState != State) {
-            Log.UncommonEvent(this, "UpdateState {0}-->{1}", State, newState);
+            //Log.UncommonEvent(this, "UpdateState {0}-->{1}", State, newState);
             State = newState;
             this.SignalStateChangedEvent?.Invoke(newState);
         }

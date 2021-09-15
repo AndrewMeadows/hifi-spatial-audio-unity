@@ -1,6 +1,7 @@
 ﻿// Tester.cs -- simple test/demo for HiFiCommunicator
 //
 
+using SimpleJSON;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -21,6 +22,9 @@ public class Tester : MonoBehaviour {
     private double _updateUserDataPeriod = 0.050;
     private double _updateUserDataExpiry = 0.0;
     private bool _muteTheMic = false;
+    private Graph _graph;
+    private ulong _lastJitterBufferEmittedCount = 0;
+    private double _lastJitterBufferDelay = 0.0f;
 
     void Awake() {
         Debug.Log("Tester.Awake");
@@ -33,6 +37,12 @@ public class Tester : MonoBehaviour {
             i += 1;
         }
         #endif
+        _graph = gameObject.AddComponent<Graph>() as Graph;
+        _graph.WindowRect = new Rect(20, 20, 800, 400);
+        _graph.AddChannel("concealedSamples", "diff", Color.green);
+        _graph.AddChannel("insertedSamplesForDeceleration", "diff", Color.yellow);
+        _graph.AddChannel("removedSamplesForAcceleration", "diff", Color.red);
+        _graph.AddChannel("jitterLatency", "raw", Color.white);
 
         // use the first available mic, if any
         if (Microphone.devices.Length > 0) {
@@ -61,6 +71,7 @@ public class Tester : MonoBehaviour {
         }
         if (string.IsNullOrEmpty(HiFiJwt)) {
             HiFiJwt = "get your own Java Web Token (JWT) from https://account.highfidelity.com/dev/account";
+            HiFiJwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBfaWQiOiIxNTU3Zjg1Ny1kOWQ5LTRhYzctOGFjYy1hM2IwNmY2MDhhNmQiLCJ1c2VyX2lkIjoiYW5kcmV3Iiwic3BhY2VfaWQiOiI4YWNhZDk1ZS1mZWI2LTQwNzMtYjdjZi1iYTJmMDVmNzFlZTIiLCJzdGFjayI6ImF1ZGlvbmV0LW1peGVyLWFwaS1ob2JieS0wMSJ9.e4LpUo6WLGlKHquuwSjrxscZ31t5wtW-VnoH7IMS71w";
         }
 
         #if USE_HIFI_COORDINATE_FRAME_UTIL
@@ -86,6 +97,9 @@ public class Tester : MonoBehaviour {
 
         // start the communicator
         _communicator.ConnectToHiFiAudioAPIServer();
+
+        // to help debug webrtc audio latency we register a callback for inbound audio stats
+        _communicator.InboundAudioStatsHandler = HandleInboundAudioStats;
 
         // start the clock
         _clock = new System.Diagnostics.Stopwatch();
@@ -117,6 +131,17 @@ public class Tester : MonoBehaviour {
             }
         }
         #endif
+        if (Input.GetKeyUp(KeyCode.G)) {
+            // dump all stats
+            _communicator.DumpAllStats();
+        }
+        if (Input.GetKeyUp(KeyCode.B)) {
+            // dump only audio stats
+            _communicator.DumpAudioStats();
+        }
+        if (Input.GetKeyUp(KeyCode.R)) {
+            _communicator.DumpReceiverStats();
+        }
     }
 
     void FixedUpdate() {
@@ -175,5 +200,45 @@ public class Tester : MonoBehaviour {
 
     void HandlePeerDisconnects(SortedSet<string> keys) {
         // this is where we would forget about known peers who have left
+    }
+
+    void HandleInboundAudioStats(string stats_string) {
+        Debug.Log(string.Format("Tester.HandleInboundAudioStats stats='{0}'", stats_string));
+        // the stats should look soemthing like
+        // '{"type":"inbound-rtp","id":"RTCInboundRTPAudioStream_3093915876","timestamp":1631308754349856,"ssrc":3093915876,
+        // "isRemote":false,"mediaType":"audio","kind":"audio","trackId":"RTCMediaStreamTrack_receiver_11",
+        // "transportId":"RTCTransport_audio_1","codecId":"RTCCodec_audio_Inbound_111","packetsReceived":1474,
+        // "fecPacketsReceived":0,"fecPacketsDiscarded":0,"bytesReceived":230509,"headerBytesReceived":46816,
+        // "packetsLost":-1,"lastPacketReceivedTimestamp":13254.927,"jitter":0,"jitterBufferDelay":52377.6,
+        // "jitterBufferEmittedCount":1371840,"totalSamplesReceived":1357600,"concealedSamples":4000,
+        // "silentConcealedSamples":3480,"concealmentEvents":1,"insertedSamplesForDeceleration":997,
+        // "removedSamplesForAcceleration":18748,"audioLevel":6.103701895199438e-05,"totalAudioEnergy":1.565369392263879e-07,
+        // "totalSamplesDuration":28.45000000000165}'
+        //
+        // Note: the online docs suggest timestamp is in millisec, however it appears to be microsec.
+        try {
+            JSONNode stats = JSON.Parse(stats_string);
+            string[] keys = {"insertedSamplesForDeceleration", "removedSamplesForAcceleration", "concealedSamples"};
+            foreach (string key in keys) {
+                _graph.AddValue(key, (float)stats[key]);
+            }
+
+            // measuring current jitterDelay takes extra work
+            ulong jbec = stats["jitterBufferEmittedCount"];
+            float denominator = (float)(jbec - _lastJitterBufferEmittedCount);
+            if (denominator == 0.0f) {
+                denominator = 1.0f;
+            }
+            _lastJitterBufferEmittedCount = jbec;
+
+            double jbd = stats["jitterBufferDelay"];
+            float latency = (float)(jbd - _lastJitterBufferDelay) / denominator;
+            _lastJitterBufferDelay = jbd;
+
+            _graph.AddValue("jitterLatency", latency);
+
+        } catch (Exception e) {
+            Debug.Log(string.Format("adebug failed to handle stats err='{0}'", e.Message));
+        }
     }
 }

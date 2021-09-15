@@ -329,6 +329,25 @@ public class HiFiCommunicator : MonoBehaviour {
     /// <see cref="OnPeerDisconnectedDelegate"/>
     public event OnPeerDisconnectedDelegate PeerDisconnectedEvent;
 
+    public RaviSession.OnInboundAudioStatsDelegate InboundAudioStatsHandler {
+        set {
+            if (_inboundAudioStatsOp != null) {
+                // stop old coroutine
+                StopCoroutine(_inboundAudioStatsOp);
+                _inboundAudioStatsOp = null;
+            }
+            _inboundAudioStatsHandler = value;
+            if (_raviSession != null && _inboundAudioStatsHandler != null) {
+                // start new coroutine
+                const float period = 0.2f;
+                _inboundAudioStatsOp = StartCoroutine(_raviSession.GetInboundAudioStats(_inboundAudioStatsHandler, period));
+            }
+        }
+        get { return _inboundAudioStatsHandler; }
+    }
+    RaviSession.OnInboundAudioStatsDelegate _inboundAudioStatsHandler;
+    Coroutine _inboundAudioStatsOp;
+
     /// <summary name="UserData">
     /// Property for communicating local user data changes to be sent to HiFi Spatial Audio Service.
     /// </summary>
@@ -549,7 +568,7 @@ public class HiFiCommunicator : MonoBehaviour {
                     // start a new attempt
                     _attemptExpiry = now + ConnectionConfig.ConnectionTimeoutMs * TICKS_PER_MSEC;
                     _nextAttempt = THE_DISTANT_FUTURE;
-                    // In theory: it should be impossible to reach this context with a valid _connection
+                    // In theory: it should be impossible to reach this context with a valid _raviSession
                     // but just in case: we call DestroySession() right before CreateSession().
                     DestroySession();
                     CreateSession();
@@ -576,6 +595,27 @@ public class HiFiCommunicator : MonoBehaviour {
 
         UserData.hasChanged = false;
         TransmitHiFiAudioAPIDataToServer();
+    }
+
+    /// for debug purposes
+    public void DumpAllStats() {
+        if (_raviSession != null) {
+            StartCoroutine(_raviSession.DumpAllStats());
+        }
+    }
+
+    /// for debug purposes
+    public void DumpAudioStats() {
+        if (_raviSession != null) {
+            StartCoroutine(_raviSession.DumpAudioStats());
+        }
+    }
+
+    /// for debug purposes
+    public void DumpReceiverStats() {
+        if (_raviSession != null) {
+            StartCoroutine(_raviSession.DumpReceiverStats());
+        }
     }
 
     void ClearPeerData() {
