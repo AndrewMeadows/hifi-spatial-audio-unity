@@ -15,7 +15,7 @@ Please see [Install package](INSTALL.md).
 1. For each User that will be connecting to the Space: create a JSON Web Token (JWT).  The JWT is a compressed binary blob with info about the App Space and the User's publicly visible name (aka optional User ID).  Note: since the User's publicly visible name is optional it is technically possible to use a single JWT for all Users in the Space, however then all HiFi peers' `IncomingAudioAPIData` will have unique `visitHashID` but the same `providedUserID`.
 1. In the Unity project:
     1. Add **com.endel.nativewebsocket** package via git URL: https://github.com/endel/NativeWebSocket.git#upm
-    1. Add Highfidelity's modified **com.unity.webrtc** package via git URL: https://github.com/highfidelity/com.unity.webrtc.git
+    1. Add Highfidelity's modified **com.unity.webrtc** package via git URL: https://github.com/highfidelity/com.unity.webrtc.git#2.4.0-directAudio
     1. Add this **com.highfidelity.spatialized-audio** package.
     1. Create a HiFi.HiFiCommunicator for the User.
     1. Set the `HiFiCommunicator.SignalingServiceUrl` to `wss://api.highfidelity.com:8001/`.
