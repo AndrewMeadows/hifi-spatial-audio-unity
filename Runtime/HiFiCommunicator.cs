@@ -644,7 +644,6 @@ public class HiFiCommunicator : MonoBehaviour {
         UserData.SetOtherUserGain(visitIdHash, gain);
     }
 
-
     void RemoveRaviSessionHandlers() {
         RaviSession.CommandController.RemoveCommandHandler("audionet.init");
         RaviSession.CommandController.BinaryCommandHandler = null;

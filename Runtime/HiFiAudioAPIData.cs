@@ -181,7 +181,7 @@ public class OutgoingAudioAPIData {
     /// <remarks>
     /// This is a map between visitIdHash and custom gain setting: { visitIdhash : gain, ... }
     /// The value of gain is in range [0,100] with a default value of 1.
-    /// Higher gain makes that Peer louder, lower gain quieter.  A gain of 0 will silence
+    /// Higher gain makes the Peer louder, lower gain quieter.  A gain of 0 will silence
     /// the Peer in the mixed audio sent from the server to the User.
     /// </remarks>
     public Dictionary<string, float> otherUserGains;
