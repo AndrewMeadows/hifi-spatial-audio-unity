@@ -18,74 +18,90 @@ using Ravi;
 
 namespace HiFi {
 
-public struct HiFiMixerInfo {
-    public string buildNumber;
-    public string buildType;
-    public string buildVersion;
-    public string visitId;
-    public string visitIdHash;
-    public string userId;
+public class HiFiMixerInfo {
+    public string buildNumber = "unknown";
+    public string buildType = "unknown";
+    public string buildVersion = "unknown";
+    public string visitId = "unknown";
+    public string visitIdHash = "unknown";
+    public string userId = "unknown";
 }
 
 /// <summary>
-/// Helper class for tracking local changes to be transmitted to Server.
+/// Helper for tracking local changes pending transmission to Server.
 /// </summary>
 /// <see cref="UserData"/>
 public class UserDataWrapper {
-    public OutgoingAudioAPIData data { get; internal set; }
+    OutgoingAudioAPIData _data;
     public bool hasChanged { get; set; }
 
     public UserDataWrapper() {
-        data = new OutgoingAudioAPIData();
+        _data = new OutgoingAudioAPIData();
         hasChanged = false;
     }
 
     public Vector3 Position {
         set {
-            data.position = value;
+            _data.position = value;
             hasChanged = true;
         }
-        get { return data.position; }
+        get { return _data.position; }
     }
 
     public Quaternion Orientation {
         set {
-            data.orientation = value;
+            _data.orientation = value;
             hasChanged = true;
         }
-        get { return data.orientation; }
+        get { return _data.orientation; }
     }
 
     public float VolumeThreshold {
         set {
-            data.volumeThreshold = value;
+            _data.volumeThreshold = value;
             hasChanged = true;
         }
-        get { return data.volumeThreshold; }
+        get { return _data.volumeThreshold; }
     }
 
     public float Gain {
         set {
-            data.hiFiGain = value;
+            _data.hiFiGain = value;
             hasChanged = true;
         }
-        get { return data.hiFiGain; }
+        get { return _data.hiFiGain; }
     }
 
     public float Attenuation {
         set {
-            data.userAttenuation = value;
+            _data.userAttenuation = value;
             hasChanged = true;
         }
-        get { return data.userAttenuation; }
+        get { return _data.userAttenuation; }
     }
 
     public float Rolloff {
         set {
-            data.userRolloff = value;
+            _data.userRolloff = value;
             hasChanged = true;
         }
-        get { return data.userRolloff; }
+        get { return _data.userRolloff; }
+    }
+
+    public void SetOtherUserGain(string visitIdHash, float gain) {
+        if (!_data.otherUserGains.ContainsKey(visitIdHash)
+                || _data.otherUserGains[visitIdHash] != gain)
+        {
+            const float MIN_GAIN = 0.0f;
+            const float MAX_GAIN = 10.0f;
+            gain = System.Math.Min(System.Math.Max(gain, MIN_GAIN), MAX_GAIN);
+            _data.otherUserGains[visitIdHash] = gain;
+            hasChanged = true;
+        }
+    }
+
+    public OutgoingAudioAPIData GetDeepCopy() {
+        return _data.DeepCopy();
     }
 }
 
@@ -274,7 +290,7 @@ public class HiFiCommunicator : MonoBehaviour {
     /// The function signature for the PeerDisconnectedEvent
     /// </summary>
     /// <param name="ids">
-    /// A List of hashedVisitIds for all peers removed from the audio space since the last frame.
+    /// A List of visitIdHashes for all peers removed from the audio space since the last frame.
     /// </param>
     /// <see cref="PeerDisconnectedEvent"/>
     public delegate void OnPeerDisconnectedDelegate(SortedSet<string> ids);
@@ -302,6 +318,26 @@ public class HiFiCommunicator : MonoBehaviour {
     /// <see cref="UserDataWrapper"/>
     public UserDataWrapper UserData { get; internal set; }
 
+    /// <summary name=UserId>
+    /// The User's "provided user id" stored in the JWT used to connect to HiFi Spatial Audio Service.
+    /// </summary>
+    public string UserId {
+        set {}
+        get {
+            return _mixerInfo.userId;
+        }
+    }
+
+    /// <summary name=VisitIdHash>
+    /// A unique string for the User's connection to the HiFi Spatial Audio Service.
+    /// </summary>
+    public string VisitIdHash {
+        set {}
+        get {
+            return _mixerInfo.visitIdHash;
+        }
+    }
+
     HiFiMixerInfo _mixerInfo;
     Dictionary<string, IncomingAudioAPIData> _peerDataMap; // "peer key"-->IncomingAudioAPIData
     Dictionary<string, string> _peerKeyMap; // hashdVisitId-->"peer key"
@@ -326,6 +362,7 @@ public class HiFiCommunicator : MonoBehaviour {
     }
 
     void Awake() {
+        _mixerInfo = new HiFiMixerInfo();
         RaviUtil.InitializeWebRTC();
         const int MAX_UNCOMPRESSED_BUFFER_SIZE = 65536;
         _uncompressedData = new byte[MAX_UNCOMPRESSED_BUFFER_SIZE];
@@ -591,27 +628,24 @@ public class HiFiCommunicator : MonoBehaviour {
     /// <summary>
     /// Adjust the volume of a peer's audio for this user.
     /// </summary>
+    /// <remarks>
+    /// Setting the gain here has a delayed effect.  The "request" for the
+    /// change will be sent to the server in the next OutgoingAudioAPIData
+    /// update which travels over the webrtc "input" DataChannel.
+    /// (e.g. along with any position/orientation changes for the local user)
+    /// and the server will begin to apply volume adjustment on its end. There
+    /// will be no measure of success except the eventual effect on inbound
+    /// audio.
+    /// </remarks>
     /// <param name="visitIdHash">Unique string for target user.</param>
     /// <param name="gain">Float value in range [0,1].</param>
-    /// <returns>True if request was sent to HiFi Spatial Audio Service.</returns>
-    public bool SetOtherUserGainForThisConnection(string visitIdHash, float gain) {
+    public void SetOtherUserGainForThisConnection(string visitIdHash, float gain) {
         Log.Debug(this, "SendOtherUserGainForThisConnection id='{0}' gain={1}", visitIdHash, gain);
-        if (ConnectionState == AudionetConnectionState.Connected) {
-            JSONNode payload = new JSONObject();
-            payload["visit_id_hash"] = visitIdHash;
-            payload["gain"] = gain;
-            bool success = RaviSession.CommandController.SendCommand("audionet.personal_volume_adjust", payload);
-            if (!success) {
-                Log.Warning(this, "SEND audionet.personal_volume_adjust failed");
-            }
-            return success;
-        }
-        return false;
+        UserData.SetOtherUserGain(visitIdHash, gain);
     }
 
     void RemoveRaviSessionHandlers() {
         RaviSession.CommandController.RemoveCommandHandler("audionet.init");
-        RaviSession.CommandController.RemoveCommandHandler("audionet.personal_volume_adjust");
         RaviSession.CommandController.BinaryCommandHandler = null;
     }
 
@@ -780,7 +814,7 @@ public class HiFiCommunicator : MonoBehaviour {
         // BUG: Unity's webrtc plugin does not yet expose the ability to mute the mic
         // WORKAROUND: when muted we slam the hiFiGain and volumeThreshold submitted to the Server
         // to achieve server-side mute
-        OutgoingAudioAPIData data = UserData.data.DeepCopy();
+        OutgoingAudioAPIData data = UserData.GetDeepCopy();
         if (_muteMic) {
             data.hiFiGain = 0.0f;
             data.volumeThreshold = 0.0f;
@@ -878,11 +912,11 @@ public class HiFiCommunicator : MonoBehaviour {
                                 // used to indicate a peer has disconnected, so we maintain a Map
                                 // between these two keys to quickly figure out which peers are being
                                 // disconnected
-                                string hashedVisitId = peerInfo["e"];
-                                if (_peerKeyMap.ContainsKey(hashedVisitId)) {
-                                    _peerKeyMap[hashedVisitId] = key;
+                                string visitIdHash = peerInfo["e"];
+                                if (_peerKeyMap.ContainsKey(visitIdHash)) {
+                                    _peerKeyMap[visitIdHash] = key;
                                 } else {
-                                    _peerKeyMap.Add(hashedVisitId, key);
+                                    _peerKeyMap.Add(visitIdHash, key);
                                 }
                             }
                             somethingChanged = true;
@@ -897,13 +931,13 @@ public class HiFiCommunicator : MonoBehaviour {
                     JSONNode ids = obj["deleted_visit_ids"];
                     if (ids.IsArray) {
                         foreach (JSONNode id in ids) {
-                            string hashedVisitId = id.Value;
+                            string visitIdHash = id.Value;
                             string key;
-                            if (_peerKeyMap.TryGetValue(hashedVisitId, out key)) {
+                            if (_peerKeyMap.TryGetValue(visitIdHash, out key)) {
                                 _peerDataMap.Remove(key);
-                                _deletedVisitIds.Add(hashedVisitId);
+                                _deletedVisitIds.Add(visitIdHash);
                             }
-                            _peerKeyMap.Remove(hashedVisitId);
+                            _peerKeyMap.Remove(visitIdHash);
                         }
                     }
                     _peersHaveDisconnected = true;

@@ -113,7 +113,7 @@ public class GameManager : MonoBehaviour {
 
     void HandlePeerChanges(List<HiFi.IncomingAudioAPIData> peers) {
         foreach(HiFi.IncomingAudioAPIData peer in peers) {
-            string key = peer.hashedVisitID;
+            string key = peer.visitIdHash;
             OtherBumper other;
             // Note: transform from y-forward to z-forward
 #if USE_HIFI_COORDINATE_FRAME_UTIL
@@ -163,8 +163,8 @@ public class GameManager : MonoBehaviour {
 
     public void SetOtherGain(float gain) {
         foreach(KeyValuePair<string, OtherBumper> entry in _others) {
-            string hashedVisitId = entry.Key;
-            bool success = _communicator.SetOtherUserGainForThisConnection(hashedVisitId, gain);
+            string visitIdHash = entry.Key;
+            bool success = _communicator.SetOtherUserGainForThisConnection(visitIdHash, gain);
             break;
         }
     }

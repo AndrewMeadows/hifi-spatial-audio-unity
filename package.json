@@ -1,7 +1,7 @@
 {
   "name": "com.highfidelity.spatialized-audio",
   "displayName": "HiFi Spatialized Audio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name" : "High Fidelity",
     "url" : "http://highfidelity.com"
@@ -16,13 +16,18 @@
   ],
   "dependencies": {
     "com.endel.nativewebsocket": "1.1.1",
-    "com.unity.webrtc": "2.4.0-exp.3"
+    "com.unity.webrtc": "2.4.0-directAudio"
   },
   "samples": [
     {
       "displayName": "Bumpers",
       "description": "A multi-user 2D app with 3D High Fidelity Audio spatialized to each user's 'dot', alongside background audio.",
       "path": "Samples~/Bumpers"
+    },
+    {
+      "displayName": "TestHiFiCommunicator",
+      "description": "A minimal zero-graphics demo for connecting to HiFi Spatial Audio service.",
+      "path": "Samples~/TestHiFiCommunicator"
     }
   ]
 }

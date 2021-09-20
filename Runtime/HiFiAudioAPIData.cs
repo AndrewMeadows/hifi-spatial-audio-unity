@@ -23,11 +23,13 @@ public class AudioAPIDataChanges {
     public float? g; // gain
     public float? a; // attenutation
     public float? r; // rolloff
+    public Dictionary<string, float> V; // map of gains for other Peer aduio { visitIdHash : gain, ... }
 
     public bool IsEmpty() {
         return x == null && y == null && z == null
             && W == null && X == null && Y == null && Z == null
-            && T == null && g == null && a == null && r == null;
+            && T == null && g == null && a == null && r == null
+            && V == null;
     }
 
     public string ToWireFormattedJsonString() {
@@ -73,12 +75,20 @@ public class AudioAPIDataChanges {
         if (r.HasValue) {
             obj["r"] = r.Value;
         }
+
+        if (V != null) {
+            JSONNode custom_gains = new JSONObject();
+            foreach (KeyValuePair<string, float> kvp in V) {
+                custom_gains[kvp.Key] = kvp.Value;
+            }
+            obj["V"] = custom_gains;
+        }
         return obj.ToString();
     }
 }
 
 /// <summary name="OutgoingAudioAPIData">
-/// Data sent to HiFi Spatial Audio Service.
+/// User specific data sent to HiFi Spatial Audio Service.
 /// </summary>
 /// <seealso cref="IncomingAudioAPIData"/>
 public class OutgoingAudioAPIData {
@@ -117,7 +127,7 @@ public class OutgoingAudioAPIData {
     public float volumeThreshold;
 
     /// <summary>
-    /// Gain (loudness) (range = [0,1]) for user's audio in the HiFi Spatial Audio Space.
+    /// Gain (loudness) (range = [0,1]) for User's audio in the HiFi Spatial Audio Space.
     /// </summary>
     /// <remarks>
     /// Gain ranges from 0.0 (mute) to 1.0 (full volume strength).
@@ -165,6 +175,18 @@ public class OutgoingAudioAPIData {
     /// <seealso cref="userAttenuation"/>
     public float userRolloff;
 
+    /// <summary name="otherUserGains">
+    /// Per Peer gain adjustments the server should apply when mixing audio for this User.
+    /// </summary>
+    /// <remarks>
+    /// This is a map between visitIdHash and custom gain setting:
+    ///   { visitIdhash : gain, ... }
+    /// The value of gain is in range [0,10] with a default value of 1.  Higher
+    /// gain makes the Peer louder, lower gain quieter.  A gain of 0 will
+    /// silence the Peer in the mixed audio sent from the server to the User.
+    /// </remarks>
+    public Dictionary<string, float> otherUserGains;
+
     public OutgoingAudioAPIData() {
         position = new Vector3(0.0f, 0.0f, 0.0f);
         orientation = new Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
@@ -176,10 +198,11 @@ public class OutgoingAudioAPIData {
         hiFiGain = DEFAULT_HIFI_GAIN;
         userAttenuation = DEFAULT_USER_ATTENUATION;;
         userRolloff = DEFAULT_USER_ROLLOFF;
+        otherUserGains = new Dictionary<string, float>();
     }
 
     /// <summary>
-    /// Make a deep copy of this OutgoingAudioAPIData.
+    /// Return a deep copy of this OutgoingAudioAPIData.
     /// </summary>
     public OutgoingAudioAPIData DeepCopy() {
         OutgoingAudioAPIData other = new OutgoingAudioAPIData();
@@ -189,6 +212,9 @@ public class OutgoingAudioAPIData {
         other.hiFiGain = hiFiGain;
         other.userAttenuation = userAttenuation;
         other.userRolloff = userRolloff;
+        foreach (string key in otherUserGains.Keys) {
+            other.otherUserGains.Add(key, otherUserGains[key]);
+        }
         return other;
     }
 
@@ -258,6 +284,35 @@ public class OutgoingAudioAPIData {
             changes.r = other.userRolloff;
             userRolloff = other.userRolloff;
         }
+
+        Dictionary<string, float> V = new Dictionary<string, float>();
+        const float DEFAULT_GAIN = 1.0f;
+        foreach (KeyValuePair<string, float> kvp in other.otherUserGains) {
+            string key = kvp.Key;
+            float gain = kvp.Value;
+            if (otherUserGains.ContainsKey(key)) {
+                // an existing gain override is changing
+                if (gain != otherUserGains[key]) {
+                    V[key] = gain;
+                    if (gain == DEFAULT_GAIN) {
+                        // overrides at default level can be removed from tracking
+                        otherUserGains.Remove(key);
+                    } else {
+                        otherUserGains[key] = gain;
+                    }
+                }
+            } else if (gain != DEFAULT_GAIN) {
+                // a gain override is being added
+                V[key] = gain;
+                otherUserGains[key] = gain;
+            }
+        }
+        // TODO: when peers are deleted we should check for, and clear out,
+        // corresponding entries in otherUserGains.
+        if (V.Count > 0) {
+            changes.V = V;
+        }
+
         return changes;
     }
 }
@@ -282,7 +337,7 @@ public class IncomingAudioAPIData : OutgoingAudioAPIData {
     /// <remarks>
     /// A unique public identifier for the User's session.
     /// </remarks>
-    public string hashedVisitID;
+    public string visitIdHash;
 
     /// <summary>
     /// True if User is streaming stereo input to server.
@@ -290,13 +345,13 @@ public class IncomingAudioAPIData : OutgoingAudioAPIData {
     public bool isStereo;
 
     /// <summary>
-    /// The current volume of the user in decibels.
+    /// The current volume of the User in decibels.
     /// </summary>
     public float volumeDecibels;
 
     public IncomingAudioAPIData() : base() {
         providedUserID = "";
-        hashedVisitID = "";
+        visitIdHash = "";
         isStereo = false;
         volumeDecibels = 0.0f;
     }
@@ -311,7 +366,7 @@ public class IncomingAudioAPIData : OutgoingAudioAPIData {
         other.userRolloff = userRolloff;
 
         other.providedUserID = providedUserID;
-        other.hashedVisitID = hashedVisitID;
+        other.visitIdHash = visitIdHash;
         other.isStereo = isStereo;
         other.volumeDecibels = volumeDecibels;
         return other;
@@ -330,7 +385,7 @@ public class IncomingAudioAPIData : OutgoingAudioAPIData {
     public bool ApplyWireFormattedJson(JSONNode obj) {
         // the key mappings are:
         //   J = providedUserID
-        //   e = hashedVisitID
+        //   e = visitIdHash
         //   s = isStereo
         //   v = volumeDecibels
         //   x = position.x
@@ -347,8 +402,8 @@ public class IncomingAudioAPIData : OutgoingAudioAPIData {
             if (kvp.Key == "J" && providedUserID != kvp.Value) {
                 providedUserID = kvp.Value;
                 somethingChanged = true;
-            } else if (kvp.Key == "e" && hashedVisitID != kvp.Value) {
-                hashedVisitID = kvp.Value;
+            } else if (kvp.Key == "e" && visitIdHash != kvp.Value) {
+                visitIdHash = kvp.Value;
                 somethingChanged = true;
             } else if (kvp.Key == "e" && isStereo != kvp.Value) {
                 isStereo = kvp.Value;
@@ -409,7 +464,7 @@ public class IncomingAudioAPIData : OutgoingAudioAPIData {
     public string ToWireFormattedJsonString() {
         // the key mappings are:
         //   J = providedUserID
-        //   e = hashedVisitID
+        //   e = visitIdHash
         //   s = isStereo
         //   v = volumeDecibels
         //   x = position.x
@@ -421,7 +476,7 @@ public class IncomingAudioAPIData : OutgoingAudioAPIData {
         //   Z = orientation.z
         JSONNode obj = new JSONObject();
         obj["J"] = providedUserID;
-        obj["e"] = hashedVisitID;
+        obj["e"] = visitIdHash;
         obj["s"] = isStereo;
         obj["v"] = volumeDecibels;
         obj["x"] = position.x;
