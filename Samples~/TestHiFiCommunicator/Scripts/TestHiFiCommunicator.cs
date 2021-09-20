@@ -159,6 +159,7 @@ public class TestHiFiCommunicator : MonoBehaviour {
         foreach (HiFi.IncomingAudioAPIData peer in peers) {
             if (!_knownPeers.ContainsKey(peer.visitIdHash)) {
                 // this is a new peer
+                Debug.Log(string.Format("TestHiFiCommunicator.HandlePeerChanges new user={0}", peer.visitIdHash));
                 _knownPeers[peer.visitIdHash] = peer;
             } else {
                 // this is an update to a known peer
