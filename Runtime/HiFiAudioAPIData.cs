@@ -112,8 +112,6 @@ public class OutgoingAudioAPIData {
     /// </remarks>
     public Quaternion orientation;
 
-    //Vector3 OrientationEuler; // unsupported for Unity
-
     /// <summary>
     /// Noise gate threshold (range = [-96, 0] db) of User's audio in the HiFi Spatial Audio Space.
     /// </summary>
@@ -321,7 +319,27 @@ public class OutgoingAudioAPIData {
 /// Data received from HiFi Spatial Audio Service.
 /// </summary>
 /// <seealso cref="OutgoingAudioAPIData"/>
-public class IncomingAudioAPIData : OutgoingAudioAPIData {
+public class IncomingAudioAPIData {
+    /// <summary>
+    /// Position (3D cartesian vector) of User in HiFi Spatial Audio Space.
+    /// </summary>
+    /// <remarks>
+    /// The HiFi Spatial Audio coordinate system is right-handed Cartesian
+    /// where, given an identity orientation, "forward" points along negative z-axis
+    /// and "up" along positive y-axis.
+    /// </remarks>
+    public Vector3 position;
+
+    /// <summary>
+    /// Rotation (in quaternion format) of User in HiFi Spatial Audio Space.
+    /// </summary>
+    /// <remarks>
+    /// The HiFi Spatial Audio coordinate system is right-handed Cartesian
+    /// where, given an identity orientation, "forward" points along negative z-axis
+    /// and "up" along positive y-axis.
+    /// </remarks>
+    public Quaternion orientation;
+
     /// <summary>
     /// The User's "publicly visisble name" extracted from the JWT provided at login.
     /// </summary>
@@ -349,21 +367,19 @@ public class IncomingAudioAPIData : OutgoingAudioAPIData {
     /// </summary>
     public float volumeDecibels;
 
-    public IncomingAudioAPIData() : base() {
+    public IncomingAudioAPIData() {
+        position = new Vector3(0.0f, 0.0f, 0.0f);
+        orientation = new Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
         providedUserID = "";
         visitIdHash = "";
         isStereo = false;
         volumeDecibels = 0.0f;
     }
 
-    public new IncomingAudioAPIData DeepCopy() {
+    public IncomingAudioAPIData DeepCopy() {
         IncomingAudioAPIData other = new IncomingAudioAPIData();
         other.position = new Vector3(position.x, position.y, position.z);
         other.orientation = new Quaternion(orientation.x, orientation.y, orientation.z, orientation.w);
-        other.volumeThreshold = volumeThreshold;
-        other.hiFiGain = hiFiGain;
-        other.userAttenuation = userAttenuation;
-        other.userRolloff = userRolloff;
 
         other.providedUserID = providedUserID;
         other.visitIdHash = visitIdHash;
