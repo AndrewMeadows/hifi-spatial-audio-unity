@@ -64,16 +64,31 @@ public class AudioAPIDataChanges {
         }
 
         if (T.HasValue) {
-            obj["T"] = T.Value;
+            if (Single.IsNaN(T.Value)) {
+                // 'T' (volumeThreshold) has a special meaning when NaN, but we pack "null"
+                obj["T"] = null;
+            } else {
+                obj["T"] = T.Value;
+            }
         }
         if (g.HasValue) {
             obj["g"] = g.Value;
         }
         if (a.HasValue) {
-            obj["a"] = a.Value;
+            if (Single.IsNaN(a.Value)) {
+                // 'a' (attenuation) has a special meaning when NaN, but we pack "null"
+                obj["a"] = null;
+            } else {
+                obj["a"] = a.Value;
+            }
         }
         if (r.HasValue) {
-            obj["r"] = r.Value;
+            if (Single.IsNaN(r.Value)) {
+                // 'r' (rolloff) has a special meaning when NaN, but we pack "null"
+                obj["r"] = null;
+            } else {
+                obj["r"] = r.Value;
+            }
         }
 
         if (V != null) {
@@ -97,8 +112,8 @@ public class OutgoingAudioAPIData {
     /// </summary>
     /// <remarks>
     /// The HiFi Spatial Audio coordinate system is right-handed Cartesian
-    /// where, given an identity orientation, "forward" points along negative z-axis
-    /// and "up" along positive y-axis.
+    /// where, given an identity orientation, "forward" points along negative
+    /// z-axis and "up" along positive y-axis.
     /// </remarks>
     public Vector3 position;
 
@@ -107,25 +122,29 @@ public class OutgoingAudioAPIData {
     /// </summary>
     /// <remarks>
     /// The HiFi Spatial Audio coordinate system is right-handed Cartesian
-    /// where, given an identity orientation, "forward" points along negative z-axis
-    /// and "up" along positive y-axis.
+    /// where, given an identity orientation, "forward" points along negative
+    /// z-axis and "up" along positive y-axis.
     /// </remarks>
     public Quaternion orientation;
 
     /// <summary>
-    /// Noise gate threshold (range = [-96, 0] db) of User's audio in the HiFi Spatial Audio Space.
+    /// Noise gate threshold (range = [-96, 0] db) of User's audio in the HiFi
+    /// Spatial Audio Space.
     /// </summary>
     /// <remarks>
-    /// A volume level below the volumeThreshold will be considered background noise
-    /// and will be smoothly gated off.  The value is specified in dbFS (decibels relative to full scale)
-    /// with values between -96.0 and 0.0.  If never explicitly set server will use a default value of -40.0.
-    /// Note: setting volumeThreshold to 0.0 will effectively mute the User for all listeners
-    /// at the server's spatial mixing stage.
+    /// A volume level below the volumeThreshold will be considered background
+    /// noise and will be smoothly gated off.  The value is specified in dbFS
+    /// (decibels relative to full scale) with values between -96.0 and 0.0.
+    /// If never explicitly set, or set to NaN (Not a Number), the server will
+    /// use a default value of -40.0.  Setting volumeThreshold to 0.0 will
+    /// effectively mute the User for all listeners at the server's spatial
+    /// mixing stage.
     /// </remarks>
     public float volumeThreshold;
 
     /// <summary>
-    /// Gain (loudness) (range = [0,1]) for User's audio in the HiFi Spatial Audio Space.
+    /// Gain (loudness) (range = [0,1]) for User's audio in the HiFi Spatial
+    /// Audio Space.
     /// </summary>
     /// <remarks>
     /// Gain ranges from 0.0 (mute) to 1.0 (full volume strength).
@@ -133,48 +152,79 @@ public class OutgoingAudioAPIData {
     public float hiFiGain;
 
     /// <summary name="userAttenuation">
-    /// Amount of attenuation (range = [0,1]) of sound volume as it travels over distance.  Low values mean less attenuation.
+    /// Amount of attenuation (range = [0,1]) of sound volume as it travels
+    /// over distance.  Low values mean less attenuation.
     /// </summary>
     /// <remarks>
-    /// By default, there is a global attenuation value (set for a given Space) that applies to all Users therein. This default Space
-    /// attenuation is usually 0.5, which represents a reasonable approximation of a real-world fall-off in sound over distance.
-    /// Lower numbers represent less attenuation (i.e. sound travels farther); higher numbers represent more attenuation (i.e. sound drops
-    /// off more quickly).  A value of 0.0 means "defer to server default".
+    /// By default, there is a global attenuation value (set for a given Space)
+    /// that applies to all Users therein. This default Space attenuation is
+    /// usually 0.5, which represents a reasonable approximation of a
+    /// real-world fall-off in sound over distance.  Lower numbers represent
+    /// less attenuation (i.e. sound travels farther); higher numbers represent
+    /// more attenuation (i.e. sound drops off more quickly).  A value of NaN
+    /// (Not a Number) means "defer to server default".
     ///
     /// When setting this value for an individual User, the following holds:
-    ///   - Positive numbers should be between 0 and 1, and they represent a logarithmic attenuation. This range is recommended, as it is
-    /// more natural sounding.  Smaller numbers represent less attenuation, so a number such as 0.2 can be used to make a particular
-    /// User's audio travel farther than other Users', for instance in "amplified" concert type settings. Similarly, an extremely
-    /// small non-zero number (e.g. 0.00001) can be used to effectively turn off attenuation for a given User within a reasonably
-    /// sized Space, resulting in a "broadcast mode" where the User can be heard throughout most of the Space regardless of their location
-    /// relative to other Users. Note: The actual value "0" is used internally to represent the default; for setting minimal attenuation,
-    /// small non-zero numbers should be used instead.
-    ///   - Negative attenuation numbers are used to represent linear attenuation, and are a somewhat artificial, non-real-world concept.
-    /// However, this setting can be used as a blunt tool to easily test attenuation, and tune it aggressively in extreme circumstances.
-    /// When using linear attenuation, the setting is the distance in meters at which the audio becomes totally inaudible.
+    ///   - Positive numbers should be between 0 and 1, and they represent a
+    ///   logarithmic attenuation. This range is recommended, as it is more
+    ///   natural sounding.  Smaller numbers represent less attenuation, so a
+    ///   number such as 0.2 can be used to make a particular User's audio
+    ///   travel farther than other Users', for instance in "amplified" concert
+    ///   type settings. Similarly, an extremely small non-zero number (e.g.
+    ///   0.00001) can be used to effectively turn off attenuation for a given
+    ///   User within a reasonably sized Space, resulting in a "broadcast mode"
+    ///   where the User can be heard throughout most of the Space regardless
+    ///   of their location relative to other Users. Note: The actual value "0"
+    ///   is used internally to represent the default; for setting minimal
+    ///   attenuation, small non-zero numbers should be used instead.
+    ///   - Negative attenuation numbers are used to represent linear
+    ///   attenuation, and are a somewhat artificial, non-real-world concept.
+    ///   However, this setting can be used as a blunt tool to easily test
+    ///   attenuation, and tune it aggressively in extreme circumstances.  When
+    ///   using linear attenuation, the setting is the distance in meters at
+    ///   which the audio becomes totally inaudible.
+    ///
+    /// WARNING: a userAttenuation of 0.0 will also be interpreted by the
+    /// server to mean "defer to default" however this behavior is scheduled to
+    /// change to mean "zero attenuation".  Until advised otherwise: don't use
+    /// zero userAttenuation.
     /// </remarks>
     /// <seealso cref="userRolloff"/>
     public float userAttenuation;
 
-    /// <summary name="userAttenuation">
-    /// Characteristic distance of attenuation of a 1kHz frequency sound.  High frequency sounds damp out faster than low.
+    /// <summary name="userRolloff">
+    /// Approximate distance at which audio becomes muffled due to filtering of
+    /// higher frequencies.
     /// </summary>
     /// <remarks>
-    /// This value represents the progressive high frequency roll-off in meters, a measure of how the higher frequencies
-    /// in a User's sound are dampened as the User gets further away.  A value of 0.0 means "defer to server default".
+    /// This value represents the progressive high frequency roll-off in
+    /// meters, a measure of how the higher frequencies in a User's sound are
+    /// dampened as the User gets further away.  A value of NaN means "defer to
+    /// server default".
     ///
-    /// By default, there is a global roll-off value (set for a given Space), currently 16 meters, which applies to all Users in a Space.
-    /// This value represents the distance for a 1kHz rolloff. Values in the range of 12 to 32 meters provide a more "enclosed" sound,
-    /// in which high frequencies tend to be dampened over distance as they are in the real world. Generally changes to roll-off values
-    /// should be made for the entire Space rather than for individual Users, but extremely high values (e.g. 99999) should be used
-    /// in combination with "broadcast mode"-style userAttenuation settings to cause the broadcasted voice to sound crisp and "up close"
-    /// even at very large distances.
+    /// By default, there is a global roll-off value (set for a given Space),
+    /// currently 16 meters, which applies to all Users in a Space.  This value
+    /// represents the distance at which the "knee" of the low-pass filter is
+    /// at 1kHz. Values in the range of 12 to 32 meters provide a more
+    /// "enclosed" sound, in which high frequencies tend to be dampened over
+    /// distance as they are in the real world. Generally changes to roll-off
+    /// values should be made for the entire Space rather than for individual
+    /// Users, but extremely high values (e.g. 99999) should be used in
+    /// combination with "broadcast mode"-style userAttenuation settings to
+    /// cause the broadcasted voice to sound crisp and "up close" even at very
+    /// large distances.
+    ///
+    /// WARNING: a userRolloff of 0.0 will also be interpreted by the
+    /// server to mean "defer to default" however this behavior is scheduled to
+    /// change to mean "immediate rolloff" which would effectively mute the User.
+    /// Don't use zero userRolloff.
     /// </remarks>
     /// <seealso cref="userAttenuation"/>
     public float userRolloff;
 
     /// <summary name="otherUserGains">
-    /// Per Peer gain adjustments the server should apply when mixing audio for this User.
+    /// Per Peer gain adjustments the server should apply when mixing audio for
+    /// this User.
     /// </summary>
     /// <remarks>
     /// This is a map between visitIdHash and custom gain setting:
@@ -217,7 +267,8 @@ public class OutgoingAudioAPIData {
     }
 
     /// <summary>
-    /// Update the values of this OutgoingAudioAPIData and store the changed values in AudioAPIDataChanges.
+    /// Update the values of this OutgoingAudioAPIData and store the changed
+    /// values in AudioAPIDataChanges.
     /// </summary>
     /// <returns>
     /// AudioAPIDataChanges with all changed values.
@@ -325,8 +376,8 @@ public class IncomingAudioAPIData {
     /// </summary>
     /// <remarks>
     /// The HiFi Spatial Audio coordinate system is right-handed Cartesian
-    /// where, given an identity orientation, "forward" points along negative z-axis
-    /// and "up" along positive y-axis.
+    /// where, given an identity orientation, "forward" points along negative
+    /// z-axis and "up" along positive y-axis.
     /// </remarks>
     public Vector3 position;
 
@@ -335,8 +386,8 @@ public class IncomingAudioAPIData {
     /// </summary>
     /// <remarks>
     /// The HiFi Spatial Audio coordinate system is right-handed Cartesian
-    /// where, given an identity orientation, "forward" points along negative z-axis
-    /// and "up" along positive y-axis.
+    /// where, given an identity orientation, "forward" points along negative
+    /// z-axis and "up" along positive y-axis.
     /// </remarks>
     public Quaternion orientation;
 
@@ -389,11 +440,13 @@ public class IncomingAudioAPIData {
     }
 
     /// <summary>
-    /// Apply a set of changes (in abbreviated JSON format) onto an existing IncomingAudioAPIData instance.
+    /// Apply a set of changes (in abbreviated JSON format) onto an existing
+    /// IncomingAudioAPIData instance.
     /// </summary>
     /// <remarks>
-    /// The HiFi Spatial Audio Service sends partial updates: only the changed fields are listed.
-    /// This method integrates the changes onto the previous values.
+    /// The HiFi Spatial Audio Service sends partial updates: only the changed
+    /// fields are listed.  This method integrates the changes onto the
+    /// previous values.
     /// </remarks>
     /// <returns>
     /// True if any field was updated, else False.
