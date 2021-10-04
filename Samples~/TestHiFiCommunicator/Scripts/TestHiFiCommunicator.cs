@@ -17,11 +17,13 @@ public class TestHiFiCommunicator : MonoBehaviour {
 
     private System.Diagnostics.Stopwatch _clock;
     private float _orbitPeriod = 6.0f;
-    private float _orbitRadius = 1.0f;
+    private float _orbitRadius = 4.0f;
     private double _updateUserDataPeriod = 0.050;
     private double _updateUserDataExpiry = 0.0;
     private bool _muteTheMic = false;
     private float _otherGain = 1.0f;
+    private bool _useDefaultAttenuation = true;
+    private bool _useDefaultRolloff = true;
     private Dictionary<string, HiFi.IncomingAudioAPIData> _knownPeers;
 
     void Awake() {
@@ -83,6 +85,13 @@ public class TestHiFiCommunicator : MonoBehaviour {
         if (Input.GetKeyUp(KeyCode.Escape) || Input.GetAxis("Cancel") > 0.0f) {
             QuitDemo();
         }
+        // these keycodes for testing features:
+        //
+        // M = toggle mute
+        // G = toggle gain of peers between 1.0 and 0.2
+        // Z = toggle user Attenuation between 0.0001 and "defer to default" (aka 0.5)
+        // X = toggle user Rolloff between 5.0 and "defer to default" (aka 16.0)
+        //
         if (Input.GetKeyUp(KeyCode.M)) {
             // toggle mute
             _muteTheMic = !_muteTheMic;
@@ -100,6 +109,22 @@ public class TestHiFiCommunicator : MonoBehaviour {
                 if (key != my_key) {
                     _communicator.SetOtherUserGainForThisConnection(key, _otherGain);
                 }
+            }
+        }
+        if (Input.GetKeyUp(KeyCode.Z)) {
+            _useDefaultAttenuation = !_useDefaultAttenuation;
+            if (_useDefaultAttenuation) {
+                _communicator.UserData.Attenuation = Single.NaN;
+            } else {
+                _communicator.UserData.Attenuation = 0.0001f;
+            }
+        }
+        if (Input.GetKeyUp(KeyCode.X)) {
+            _useDefaultRolloff = !_useDefaultRolloff;
+            if (_useDefaultRolloff) {
+                _communicator.UserData.Rolloff = Single.NaN;
+            } else {
+                _communicator.UserData.Rolloff = 5.0f;
             }
         }
     }

@@ -1,3 +1,8 @@
+## V0.3.0
+* allow User to customize attenuation/rolloff to zero without defering to defaults
+* allow User to defer to default attenuation/rolloff by using NaN
+* allow User to defer to default volumeThreshold by using NaN
+
 ## v0.2.0
 * Fix for HiFiCommunicator.SetOtherUserGainForThisConnection()
 * HiFiCommunicator.SetOtherUserGainForThisConnection() now returns void instead of bool
