@@ -376,7 +376,7 @@ public class HiFiCommunicator : MonoBehaviour {
         // update is actually sent (e.g. because we only send changes ==> force first update).
         _lastUserData.position = new Vector3(-1.0e7f, -1.0e7f, -1.0e7f);
         _lastUserData.orientation = new Quaternion(-1.0e7f, -1.0e7f, -1.0e7f, -1.0e7f);
-        _lastUserData.volumeThreshold = -96.0f;
+        //_lastUserData.volumeThreshold = -96.0f; // don't twiddle this one
         _lastUserData.hiFiGain = -1.0e7f;
         //_lastUserData.userAttenuation = -1.0e7f; // don't twiddle this one
         //_lastUserData.userRolloff = -1.0e7f; // don't twiddle this one
