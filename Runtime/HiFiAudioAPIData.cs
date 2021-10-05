@@ -238,10 +238,10 @@ public class OutgoingAudioAPIData {
     public OutgoingAudioAPIData() {
         position = new Vector3(0.0f, 0.0f, 0.0f);
         orientation = new Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
-        const float DEFAULT_VOLUME_THRESHOLD = -40.0f;
+        const float DEFAULT_VOLUME_THRESHOLD = Single.NaN; // NaN means "defer to server default"
         const float DEFAULT_HIFI_GAIN = 1.0f;
-        const float DEFAULT_USER_ATTENUATION = 0.0f; // 0.0 means "defer to server default"
-        const float DEFAULT_USER_ROLLOFF = 0.0f; // 0.0 means "defer to server default"
+        const float DEFAULT_USER_ATTENUATION = Single.NaN; // NaN means "defer to server default"
+        const float DEFAULT_USER_ROLLOFF = Single.NaN; // NaN means "defer to server default"
         volumeThreshold = DEFAULT_VOLUME_THRESHOLD;
         hiFiGain = DEFAULT_HIFI_GAIN;
         userAttenuation = DEFAULT_USER_ATTENUATION;;
@@ -314,7 +314,11 @@ public class OutgoingAudioAPIData {
             }
         }
 
-        if (volumeThreshold != other.volumeThreshold) {
+        bool param_is_nan = Single.IsNaN(volumeThreshold);
+        bool other_param_is_nan = Single.IsNaN(other.volumeThreshold);
+        if (param_is_nan != other_param_is_nan
+                || (!param_is_nan && volumeThreshold != other.volumeThreshold))
+        {
             changes.T = other.volumeThreshold;
             volumeThreshold = other.volumeThreshold;
         }
@@ -324,12 +328,20 @@ public class OutgoingAudioAPIData {
             hiFiGain = other.hiFiGain;
         }
 
-        if (userAttenuation != other.userAttenuation) {
+        param_is_nan = Single.IsNaN(userAttenuation);
+        other_param_is_nan = Single.IsNaN(other.userAttenuation);
+        if (param_is_nan != other_param_is_nan
+                || (!param_is_nan && userAttenuation != other.userAttenuation))
+        {
             changes.a = other.userAttenuation;
             userAttenuation = other.userAttenuation;
         }
 
-        if (userRolloff != other.userRolloff) {
+        param_is_nan = Single.IsNaN(userRolloff);
+        other_param_is_nan = Single.IsNaN(other.userRolloff);
+        if (param_is_nan != other_param_is_nan
+                || (!param_is_nan && userRolloff != other.userRolloff))
+        {
             changes.r = other.userRolloff;
             userRolloff = other.userRolloff;
         }

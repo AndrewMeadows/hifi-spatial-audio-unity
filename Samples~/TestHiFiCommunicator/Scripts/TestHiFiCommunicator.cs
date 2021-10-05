@@ -24,6 +24,7 @@ public class TestHiFiCommunicator : MonoBehaviour {
     private float _otherGain = 1.0f;
     private bool _useDefaultAttenuation = true;
     private bool _useDefaultRolloff = true;
+    private bool _useDefaultVolumeThreshold = true;
     private Dictionary<string, HiFi.IncomingAudioAPIData> _knownPeers;
 
     void Awake() {
@@ -91,6 +92,7 @@ public class TestHiFiCommunicator : MonoBehaviour {
         // G = toggle gain of peers between 1.0 and 0.2
         // Z = toggle user Attenuation between 0.0001 and "defer to default" (aka 0.5)
         // X = toggle user Rolloff between 5.0 and "defer to default" (aka 16.0)
+        // C = toggle user volumeThreshold between -5.0 and "defer to default" (aka -40)
         //
         if (Input.GetKeyUp(KeyCode.M)) {
             // toggle mute
@@ -125,6 +127,14 @@ public class TestHiFiCommunicator : MonoBehaviour {
                 _communicator.UserData.Rolloff = Single.NaN;
             } else {
                 _communicator.UserData.Rolloff = 5.0f;
+            }
+        }
+        if (Input.GetKeyUp(KeyCode.C)) {
+            _useDefaultVolumeThreshold = !_useDefaultVolumeThreshold;
+            if (_useDefaultVolumeThreshold) {
+                _communicator.UserData.VolumeThreshold = Single.NaN;
+            } else {
+                _communicator.UserData.VolumeThreshold = -5.0f;
             }
         }
     }
