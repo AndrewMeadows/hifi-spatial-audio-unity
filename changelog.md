@@ -1,4 +1,7 @@
-## V0.3.0
+## v2.1.0
+* bump version number to agree with other language SDK's
+
+## v0.3.0
 * allow User to customize attenuation/rolloff to zero without defering to defaults
 * allow User to defer to default attenuation/rolloff by using NaN
 * allow User to defer to default volumeThreshold by using NaN
