@@ -16,7 +16,7 @@ Please see [Install package](INSTALL.md).
 1. In the Unity project:
     1. Add **com.endel.nativewebsocket** package via git URL: https://github.com/endel/NativeWebSocket.git#upm
     1. Add Unity's experimental **com.unity.webrtc** package version 2.4.0-exp.4 via git URL: https://github.com/Unity-Technologies/com.unity.webrtc.git#e5ef0b98f893d44b88863db39b700e71d19462f0
-    1. Add this **com.highfidelity.spatialized-audio** package.
+    1. Add this **com.highfidelity.spatialized-audio** package via git URL: https://github.com/HighFidelity/hifi-spatial-audio-unity.git
     1. Create a HiFi.HiFiCommunicator for the User.
     1. Set the `HiFiCommunicator.SignalingServiceUrl` to `wss://api.highfidelity.com:8001/`.
     1. Set the `HiFiCommunicator.JWT`
